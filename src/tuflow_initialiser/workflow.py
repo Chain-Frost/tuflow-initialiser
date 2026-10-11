@@ -15,7 +15,7 @@ from shapely.geometry import LineString, mapping
 from shapely.ops import unary_union
 
 from .d8 import headwater_extensions, stream_mask
-from .geometry import Domain, check_dem, make_domain, read_aoi
+from .geometry import Domain, check_dem, detailed_analysis_cells, make_domain, read_aoi
 from .gis_writer import write_analysis, write_tuflow_layers
 from .grass_runner import process_terrain
 from .model_terrain import set_model_terrain
@@ -37,6 +37,7 @@ class BuildConfig:
     tuflow_executable: Path
     rainfall_name: str
     exclusions: tuple[Path, ...] = ()
+    analyse_exclusions: bool = False
     analysis_resolution_m: float | None = None
     max_analysis_cells: int = 100_000_000
     grass_executable: str = "grass"
@@ -68,13 +69,20 @@ def _write_streams(
     transform: rasterio.Affine,
     crs_wkt: str,
     min_area_m2: float,
+    analyse_exclusions: bool,
+    domain: Domain,
 ) -> None:
+    analysis_cells = detailed_analysis_cells(
+        domain, transform=transform, analyse_exclusions=analyse_exclusions
+    )
     threshold = stream_mask(
         accumulation, cell_area_m2=abs(transform.a * transform.e),
         min_area_m2=min_area_m2,
-    ) & contributing
+    ) & contributing & analysis_cells
     reaches = stream_reaches(directions, threshold)
-    extensions = headwater_extensions(directions, threshold, accumulation)
+    extensions = headwater_extensions(
+        directions, threshold, accumulation, allowed_cells=analysis_cells
+    )
     schema = {
         "geometry": "LineString",
         "properties": {
@@ -191,13 +199,18 @@ def build(config: BuildConfig) -> Path:
                     stage_project, scenario=config.scenario, domain=domain, rainfall_name=config.rainfall_name
                 )
                 analysis = stage_project / "model" / "gis" / "hydrology.gpkg"
-                write_analysis(analysis, domain=domain, crs_wkt=terrain.crs.to_wkt())
+                write_analysis(
+                    analysis, domain=domain, crs_wkt=terrain.crs.to_wkt(),
+                    analyse_exclusions=config.analyse_exclusions,
+                )
                 stream_gpkg = stage_project / "model" / "gis" / "streams.gpkg"
                 _write_streams(
                     stream_gpkg, directions=directions, accumulation=accum,
                     contributing=domain.contributing_cells, terrain=original,
                     transform=terrain.transform, crs_wkt=terrain.crs.to_wkt(),
                     min_area_m2=config.stream_threshold_m2,
+                    analyse_exclusions=config.analyse_exclusions,
+                    domain=domain,
                 )
                 target_analysis = stage_project / "terrain" / "hydrology"
                 target_analysis.mkdir(parents=True)
@@ -214,6 +227,22 @@ def build(config: BuildConfig) -> Path:
                     encoding="utf-8",
                 )
                 if domain.excluded_area is not None:
+                    (target_analysis / "exclusion_analysis.json").write_text(
+                        json.dumps(
+                            {
+                                "analyse_exclusions": config.analyse_exclusions,
+                                "hydrologic_connectivity_computed_for_full_aoi": True,
+                                "detailed_stream_analysis_includes_excluded_areas": config.analyse_exclusions,
+                                "note": (
+                                    "Entire DEM still participates in GRASS D8/accumulation; "
+                                    "this flag controls detailed stream/path calculations, "
+                                    "not GRASS preprocessing or exclusion from TUFLOW code/rainfall."
+                                ),
+                            },
+                            indent=2,
+                        ),
+                        encoding="utf-8",
+                    )
                     (stage_project / "EXCLUSIONS_REQUIRE_REVIEW.txt").write_text(
                         "Upstream catchments have been excluded from 2D code and rainfall. "
                         "Their incoming flow has NOT been replaced with BCs. "
