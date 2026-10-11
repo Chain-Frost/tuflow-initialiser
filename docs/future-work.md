@@ -15,3 +15,7 @@ Candidate **future** work (not in initial scope):
 - Optional crossing analysis and model preflight checks.
 
 **Explicitly excluded permanently:** model extent optimisation, automatic cell-size selection, ARR rainfall processing, automatic mapping/reports, `.trfc`, and `2d_sa`.
+
+## Terrain input optimisation — [issue #6](https://github.com/Chain-Frost/tuflow-initialiser/issues/6)
+
+Later, prepare TUFLOW terrain rasters clipped to the model footprint plus a configurable margin, and **trim extensive overlap among high-/low-priority sources** (e.g. LiDAR versus SRTM) to a small configurable seam overlap. Keep lower-priority data wherever it fills valid terrain gaps; do not modify original DEMs or the separate watershed-processing DEM. Benchmark TUFLOW processing/postprocessing time and validate raster coverage, resolution, precedence and NoData. Reuse the maintained lossless **`tuflow` GeoTIFF profile** and GDAL clipping helpers from `ryan-tools` where practical; using `ryan-tools` as an optional dependency is acceptable for this future feature. No implementation within PR #1.
