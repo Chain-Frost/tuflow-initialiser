@@ -21,7 +21,12 @@ def _parser() -> argparse.ArgumentParser:
     init.add_argument("--overwrite", action="store_true")
 
     make = commands.add_parser("build", help="Build project from DEM/AOI via GRASS and canonical TUFLOW GIS")
-    make.add_argument("--dem", required=True, type=Path)
+    make.add_argument("--terrain", required=True, type=Path, action="append",
+                      help="Repeat in highest-to-lowest priority order (e.g. LiDAR then SRTM)")
+    make.add_argument("--exclude", type=Path, action="append", default=[],
+                      help="Optional upstream catchment polygon to remove from model; repeatable")
+    make.add_argument("--analysis-resolution-m", type=float, default=None,
+                      help="Hydrology raster resolution in metres; not the TUFLOW cell size")
     make.add_argument("--aoi", required=True, type=Path, help="Vector AOI, in DEM CRS")
     make.add_argument("--output", required=True, type=Path)
     make.add_argument("--name", required=True)
@@ -57,7 +62,9 @@ def main() -> int:
     elif args.command == "build":
         build(
             BuildConfig(
-                dem=args.dem, aoi=args.aoi, output=args.output,
+                terrains=tuple(args.terrain), aoi=args.aoi, output=args.output,
+                exclusions=tuple(args.exclude),
+                analysis_resolution_m=args.analysis_resolution_m,
                 name=args.name, scenario=args.scenario,
                 prj=args.prj, tuflow_executable=args.tuflow_exe,
                 rainfall_name=args.rainfall_name,
