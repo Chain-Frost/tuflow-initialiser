@@ -1,5 +1,8 @@
 # Fail-closed integrity and preflight checks
 
+For the shared real-DEM inputs, reproduction command and retained results, see
+[base-workflow validation](base-workflow-validation.md).
+
 - Each supplied terrain source must be readable, single-band with declared CRS, and carry valid NoData handling. Source list is ordered, unique and nonempty; output analysis grid uses a projected metre-based CRS and is capped at a configurable maximum cell count.
 - A GDAL-backed provenance raster records source priority for every hydrology analysis DEM pixel. First valid source wins. Input terrain grids can differ in extent/resolution/CRS; reprojection is explicit. Vertical datum **cannot** be inferred from CRS alone; conflicting vertical datums and seams remain a required engineering review.
 - AOI geometry must be valid, nonempty, and lie inside DEM coverage and use project CRS. All upstream contributing cells must be determinable, and unknown NoData/edge-truncated basin paths must stop the build.
