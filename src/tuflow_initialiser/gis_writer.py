@@ -79,6 +79,10 @@ def write_analysis(path: Path, *, domain: Domain, crs_wkt: str) -> None:
         "aoi_buffer": domain.buffer,
         "active_extent": domain.active,
     }
+    if domain.exclusions is not None:
+        outputs["exclusions_supplied"] = domain.exclusions
+    if domain.excluded_area is not None:
+        outputs["exclusions_applied"] = domain.excluded_area
     for name, geom in outputs.items():
         with fiona.open(
             path, mode="w",
