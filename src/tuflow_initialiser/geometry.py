@@ -116,3 +116,30 @@ def make_domain(
     if excluded_area is not None and active.intersection(excluded_area).area > 1e-6:
         raise ValueError("Excluded upstream areas remain active")
     return Domain(aoi, contributing, expanded, active, loc, upstream, exclusions, excluded_area)
+
+
+
+def detailed_analysis_cells(
+    domain: Domain,
+    *,
+    transform: rasterio.Affine,
+    analyse_exclusions: bool = False,
+) -> NDArray[np.bool_]:
+    """Select the stream/subcatchment analysis cells, independently of model code.
+
+    Excluded terrain always remains in the *full* AOI contributing-area
+    delineation. Unless explicitly requested, it is omitted from the detailed
+    stream and stream-headwater analysis. Rasterise conservatively with
+    all_touched=True so even partially excluded cells are not analysed.
+    """
+    cells = domain.contributing_cells.copy()
+    if domain.excluded_area is None or analyse_exclusions:
+        return cells
+    excluded_cells = rasterize(
+        [(domain.excluded_area, 1)],
+        out_shape=cells.shape,
+        transform=transform,
+        fill=0,
+        all_touched=True,
+    )
+    return cells & (excluded_cells == 0)
