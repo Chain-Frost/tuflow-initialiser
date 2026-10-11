@@ -116,6 +116,8 @@ def headwater_extensions(
     directions: NDArray[np.integer],
     stream: NDArray[np.bool_],
     accumulation: NDArray[np.floating],
+    *,
+    allowed_cells: NDArray[np.bool_] | None = None,
 ) -> list[list[tuple[int, int]]]:
     """Trace synthetic upstream paths from stream initiation cells to divides.
 
@@ -124,6 +126,11 @@ def headwater_extensions(
     """
     if directions.shape != stream.shape or stream.shape != accumulation.shape:
         raise ValueError("Mismatched raster shapes")
+    if allowed_cells is not None:
+        if allowed_cells.shape != stream.shape:
+            raise ValueError("Allowed stream-analysis raster shape must match")
+        if np.any(stream & ~allowed_cells):
+            raise ValueError("Threshold streams must lie inside stream-analysis cells")
     paths: list[list[tuple[int, int]]] = []
     for r, c in zip(*np.nonzero(stream), strict=True):
         start = (int(r), int(c))
@@ -133,7 +140,10 @@ def headwater_extensions(
         current = start
         seen = {start}
         while True:
-            choices = [p for p in incoming(directions, *current) if not stream[p]]
+            choices = [
+                p for p in incoming(directions, *current)
+                if not stream[p] and (allowed_cells is None or allowed_cells[p])
+            ]
             if not choices:
                 break
             nxt = max(choices, key=lambda p: (float(accumulation[p]), -p[0], -p[1]))
