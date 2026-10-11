@@ -11,13 +11,18 @@ from tuflow_initialiser.model_terrain import set_model_terrain
 
 
 def _terrain(path: Path, epsg: int) -> None:
-    if epsg == 4326:
-        transform = from_origin(115.0, -31.0, 0.0003, 0.0003)
-    else:
-        transform = from_origin(300000, 6500000, 30, 30)
+    transform = from_origin(115.0, -31.0, 0.0003, 0.0003) if epsg == 4326 else from_origin(300000, 6500000, 30, 30)
     with rasterio.open(
-        path, "w", driver="GTiff", height=10, width=10, count=1,
-        crs=CRS.from_epsg(epsg), transform=transform, dtype="float32", nodata=-9999.0,
+        path,
+        "w",
+        driver="GTiff",
+        height=10,
+        width=10,
+        count=1,
+        crs=CRS.from_epsg(epsg),
+        transform=transform,
+        dtype="float32",
+        nodata=-9999.0,
     ) as output:
         output.write(np.full((10, 10), 123, dtype="float32"), 1)
 
@@ -39,9 +44,7 @@ def test_tuflow_reads_low_priority_first_and_highest_last(tmp_path: Path) -> Non
     srtm = tmp_path / "srtm.tif"
     _terrain(lidar, 28350)
     _terrain(srtm, 28350)
-    set_model_terrain(
-        project_dir=project, sources=[lidar, srtm], target_crs=CRS.from_epsg(28350)
-    )
+    set_model_terrain(project_dir=project, sources=[lidar, srtm], target_crs=CRS.from_epsg(28350))
     text = (project / "model" / "GEOM_01.tgc").read_text(encoding="utf-8")
     assert text.index(str(srtm.resolve())) < text.index(str(lidar.resolve()))
     assert "priority 2" in text
@@ -55,9 +58,7 @@ def test_geographic_fallback_is_reprojected_for_tuflow(tmp_path: Path) -> None:
     srtm = tmp_path / "geographic.tif"
     _terrain(lidar, 28350)
     _terrain(srtm, 4326)
-    set_model_terrain(
-        project_dir=project, sources=[lidar, srtm], target_crs=CRS.from_epsg(28350)
-    )
+    set_model_terrain(project_dir=project, sources=[lidar, srtm], target_crs=CRS.from_epsg(28350))
     prepared = project / "terrain" / "prepared" / "terrain_priority_002_reprojected.tif"
     assert prepared.exists()
     with rasterio.open(prepared) as raster:

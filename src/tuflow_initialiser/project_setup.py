@@ -15,13 +15,15 @@ import subprocess
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Literal, cast
+from typing import Final, Literal
 
-import fiona  # pyright: ignore[reportMissingTypeStubs]
+import fiona
 import numpy as np
-import rasterio  # pyright: ignore[reportMissingTypeStubs]
+import rasterio
 from loguru import logger
-from rasterio.transform import from_origin  # pyright: ignore[reportMissingTypeStubs, reportUnknownVariableType]
+from rasterio.transform import from_origin
+
+from .gis_types import LayerSchema
 
 GeometrySuffix = Literal["P", "L", "R"]
 UtilityDestination = Literal[".", "model/gis", "results"]
@@ -74,7 +76,6 @@ DEFAULT_WORKING_LAYERS: Final[tuple[WorkingLayerSpec, ...]] = (
     WorkingLayerSpec(empty_type="2d_rf", geometry_suffix="R"),
 )
 DEFAULT_UTILITY_SOURCE_ROOT: Final[Path] = Path("__ryan_tools_not_configured__")
-_PACKAGED_UTILITY_SOURCE_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 DEFAULT_2D_LOC_STYLE_FILE: Final[Path] = Path(__file__).resolve().parent / "resources" / "2d_loc_qa_check.qml"
 _PACKAGED_2D_LOC_STYLE_FILE: Final[Path] = DEFAULT_2D_LOC_STYLE_FILE
 _PROJECT_UTILITIES: Final[tuple[ProjectUtilitySpec, ...]] = (
@@ -177,7 +178,8 @@ def _validate_config(config: TuflowProjectConfig) -> None:
         msg = f"TUFLOW template directory not found: {config.templates_dir}"
         raise FileNotFoundError(msg)
     if config.copy_utilities and (config.utility_source_root is None or not config.utility_source_root.is_dir()):
-        raise ValueError("copy_utilities requires a valid utility_source_root")
+        msg = "copy_utilities requires a valid utility_source_root"
+        raise ValueError(msg)
 
 
 def _create_folders(project_dir: Path) -> None:
@@ -249,19 +251,6 @@ def _copy_project_utilities(*, config: TuflowProjectConfig, project_dir: Path) -
     return tuple(copied)
 
 
-def _resolve_utility_source_root() -> Path:
-    if DEFAULT_UTILITY_SOURCE_ROOT.is_dir():
-        return DEFAULT_UTILITY_SOURCE_ROOT
-    if all((_PACKAGED_UTILITY_SOURCE_ROOT / utility.relative_source).is_file() for utility in _PROJECT_UTILITIES):
-        logger.debug(
-            "Repository utility folder not found at {}; using packaged utilities from {}",
-            DEFAULT_UTILITY_SOURCE_ROOT,
-            _PACKAGED_UTILITY_SOURCE_ROOT,
-        )
-        return _PACKAGED_UTILITY_SOURCE_ROOT
-    return DEFAULT_UTILITY_SOURCE_ROOT
-
-
 def _resolve_2d_loc_style_file() -> Path:
     if DEFAULT_2D_LOC_STYLE_FILE.is_file():
         return DEFAULT_2D_LOC_STYLE_FILE
@@ -294,8 +283,8 @@ def _create_projection_files(*, prj_file: Path, gis_dir: Path, overwrite: bool) 
             path.unlink()
 
     shutil.copy2(src=prj_file, dst=projection_prj)
-    projection_schema: dict[str, object] = {"geometry": "Point", "properties": {"id": "str"}}
-    with fiona.open(  # pyright: ignore[reportUnknownMemberType]
+    projection_schema: LayerSchema = {"geometry": "Point", "properties": {"id": "str"}}
+    with fiona.open(
         projection_gpkg,
         mode="w",
         driver="GPKG",
@@ -306,8 +295,8 @@ def _create_projection_files(*, prj_file: Path, gis_dir: Path, overwrite: bool) 
     ):
         pass
 
-    transform = from_origin(west=-0.5, north=0.5, xsize=1.0, ysize=1.0)  # pyright: ignore[reportUnknownVariableType]
-    with rasterio.open(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    transform = from_origin(west=-0.5, north=0.5, xsize=1.0, ysize=1.0)
+    with rasterio.open(
         fp=projection_tif,
         mode="w",
         driver="GTiff",
@@ -319,15 +308,15 @@ def _create_projection_files(*, prj_file: Path, gis_dir: Path, overwrite: bool) 
         transform=transform,
         nodata=-999.0,
         compress="deflate",
-    ) as dataset:  # pyright: ignore[reportUnknownVariableType]
-        dataset.write(np.zeros((1, 1, 1), dtype=np.float32))  # pyright: ignore[reportUnknownMemberType]
+    ) as dataset:
+        dataset.write(np.zeros((1, 1, 1), dtype=np.float32))
     logger.info("Created projection files in {}", gis_dir)
 
 
 def _run_tuflow_empty_generation(*, tuflow_executable: Path, control_file: Path, expected_empty_dir: Path) -> None:
     command: list[str] = [str(tuflow_executable), "-b", "-nmb", str(control_file)]
     logger.info("Generating canonical empty GeoPackages with TUFLOW")
-    completed: subprocess.CompletedProcess[str] = subprocess.run(
+    completed: subprocess.CompletedProcess[str] = subprocess.run(  # noqa: S603 - validated executable, explicit argv, no shell
         args=command,
         cwd=control_file.parent,
         check=False,
@@ -369,14 +358,14 @@ def _create_working_layer_from_empty(
     if target_path.exists():
         target_path.unlink()
 
-    schema: dict[str, object] = _read_fiona_schema(source_path=source_path, source_layer=source_layer)
-    with fiona.open(  # pyright: ignore[reportUnknownMemberType]
+    schema: LayerSchema = read_empty_schema(source_path=source_path, source_layer=source_layer)
+    with fiona.open(
         fp=source_path,
         layer=source_layer,
     ) as source:
-        crs_wkt: str | None = cast("str | None", source.crs_wkt)  # pyright: ignore[reportUnknownMemberType]
+        crs_wkt: str | None = source.crs_wkt
 
-    with fiona.open(  # pyright: ignore[reportUnknownMemberType]
+    with fiona.open(
         fp=target_path,
         mode="w",
         driver="GPKG",
@@ -390,7 +379,7 @@ def _create_working_layer_from_empty(
     return target_path
 
 
-def _read_fiona_schema(*, source_path: Path, source_layer: str) -> dict[str, object]:
+def read_empty_schema(*, source_path: Path, source_layer: str) -> LayerSchema:
     """Read a complete Fiona schema, including fields Fiona may omit."""
     uri: str = f"file:{source_path.as_posix()}?mode=ro"
     with closing(sqlite3.connect(database=uri, uri=True)) as connection:

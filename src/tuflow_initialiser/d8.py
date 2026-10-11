@@ -11,20 +11,30 @@ from numpy.typing import NDArray
 
 # (row step, column step), from a cell to its downstream neighbour.
 OFFSETS: dict[int, tuple[int, int]] = {
-    1: (-1, 1), 2: (-1, 0), 3: (-1, -1), 4: (0, -1),
-    5: (1, -1), 6: (1, 0), 7: (1, 1), 8: (0, 1),
+    1: (-1, 1),
+    2: (-1, 0),
+    3: (-1, -1),
+    4: (0, -1),
+    5: (1, -1),
+    6: (1, 0),
+    7: (1, 1),
+    8: (0, 1),
 }
 
 
 def _check(directions: NDArray[np.integer], seeds: NDArray[np.bool_]) -> None:
     if directions.ndim != 2 or seeds.ndim != 2 or directions.shape != seeds.shape:
-        raise ValueError("D8 raster and AOI raster must be same-shape 2D arrays")
+        msg = "D8 raster and AOI raster must be same-shape 2D arrays"
+        raise ValueError(msg)
     if not np.issubdtype(directions.dtype, np.integer):
-        raise TypeError("D8 flow directions must be integers")
+        msg = "D8 flow directions must be integers"
+        raise TypeError(msg)
     if not np.all(np.abs(directions.astype(np.int16)) <= 8):
-        raise ValueError("Invalid GRASS D8 flow direction, expected -8..8")
+        msg = "Invalid GRASS D8 flow direction, expected -8..8"
+        raise ValueError(msg)
     if not bool(np.any(seeds)):
-        raise ValueError("AOI raster has no selected cells")
+        msg = "AOI raster has no selected cells"
+        raise ValueError(msg)
 
 
 def next_cell(directions: NDArray[np.integer], row: int, col: int) -> tuple[int, int] | None:
@@ -62,11 +72,8 @@ def contributing_cells(
     algorithm scales linearly with contributing cell count.
     """
     _check(directions, aoi)
-    rows, cols = directions.shape
     visited = aoi.copy()
-    queue: deque[tuple[int, int]] = deque(
-        (int(r), int(c)) for r, c in zip(*np.nonzero(aoi), strict=True)
-    )
+    queue: deque[tuple[int, int]] = deque((int(r), int(c)) for r, c in zip(*np.nonzero(aoi), strict=True))
     while queue:
         row, col = queue.popleft()
         for ur, uc in incoming(directions, row, col):
@@ -89,7 +96,8 @@ def contributing_cells(
             row, col = dest
         else:
             if visited[row, col] and states[row, col] == 1:
-                raise ValueError("D8 flow-direction cycle within AOI contributing area")
+                msg = "D8 flow-direction cycle within AOI contributing area"
+                raise ValueError(msg)
         for r, c in trail:
             states[r, c] = 2
 
@@ -99,16 +107,19 @@ def contributing_cells(
         or bool(np.any(visited[:, 0]))
         or bool(np.any(visited[:, -1]))
     ):
-        raise ValueError("Contributing catchment touches DEM edge; supply wider terrain")
+        msg = "Contributing catchment touches DEM edge; supply wider terrain"
+        raise ValueError(msg)
     return visited
 
 
 def stream_mask(accumulation: NDArray[np.floating], *, cell_area_m2: float, min_area_m2: float) -> NDArray[np.bool_]:
     """Area-thresholded stream cells; unrelated to full AOI catchment extent."""
     if cell_area_m2 <= 0 or min_area_m2 <= 0:
-        raise ValueError("Cell area and stream threshold must be positive")
+        msg = "Cell area and stream threshold must be positive"
+        raise ValueError(msg)
     if not np.all(np.isfinite(accumulation)):
-        raise ValueError("Accumulation must be finite and free of NoData")
+        msg = "Accumulation must be finite and free of NoData"
+        raise ValueError(msg)
     return accumulation * cell_area_m2 >= min_area_m2
 
 
@@ -125,12 +136,15 @@ def headwater_extensions(
     These are *inferred overland flow paths*, not mapped natural channels.
     """
     if directions.shape != stream.shape or stream.shape != accumulation.shape:
-        raise ValueError("Mismatched raster shapes")
+        msg = "Mismatched raster shapes"
+        raise ValueError(msg)
     if allowed_cells is not None:
         if allowed_cells.shape != stream.shape:
-            raise ValueError("Allowed stream-analysis raster shape must match")
+            msg = "Allowed stream-analysis raster shape must match"
+            raise ValueError(msg)
         if np.any(stream & ~allowed_cells):
-            raise ValueError("Threshold streams must lie inside stream-analysis cells")
+            msg = "Threshold streams must lie inside stream-analysis cells"
+            raise ValueError(msg)
     paths: list[list[tuple[int, int]]] = []
     for r, c in zip(*np.nonzero(stream), strict=True):
         start = (int(r), int(c))
@@ -141,14 +155,16 @@ def headwater_extensions(
         seen = {start}
         while True:
             choices = [
-                p for p in incoming(directions, *current)
+                p
+                for p in incoming(directions, *current)
                 if not stream[p] and (allowed_cells is None or allowed_cells[p])
             ]
             if not choices:
                 break
             nxt = max(choices, key=lambda p: (float(accumulation[p]), -p[0], -p[1]))
             if nxt in seen:
-                raise ValueError("Cycle in synthetic headwater trace")
+                msg = "Cycle in synthetic headwater trace"
+                raise ValueError(msg)
             seen.add(nxt)
             route.append(nxt)
             current = nxt

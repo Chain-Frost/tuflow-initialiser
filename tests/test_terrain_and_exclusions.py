@@ -11,17 +11,24 @@ import rasterio
 from rasterio.crs import CRS
 from rasterio.transform import from_origin
 from shapely.geometry import box
+from shapely.geometry.base import BaseGeometry
 
-from tuflow_initialiser.geometry import detailed_analysis_cells, make_domain
+from tuflow_initialiser.geometry import Domain, detailed_analysis_cells, make_domain
 from tuflow_initialiser.terrain import compose_terrain
 
 
 def _raster(path: Path, pixels: np.ndarray, *, west: float, north: float) -> None:
     with rasterio.open(
-        path, mode="w", driver="GTiff", count=1,
-        width=pixels.shape[1], height=pixels.shape[0],
-        crs="EPSG:28350", transform=from_origin(west, north, 1, 1),
-        dtype="float32", nodata=-9999,
+        path,
+        mode="w",
+        driver="GTiff",
+        count=1,
+        width=pixels.shape[1],
+        height=pixels.shape[0],
+        crs="EPSG:28350",
+        transform=from_origin(west, north, 1, 1),
+        dtype="float32",
+        nodata=-9999,
     ) as output:
         output.write(pixels.astype("float32"), 1)
 
@@ -34,8 +41,10 @@ def test_lidar_overrides_srtm_and_srtm_fills_void(tmp_path: Path) -> None:
     pixels[0, 0] = -9999
     _raster(lidar, pixels, west=4, north=6)
     merged = compose_terrain(
-        [lidar, coarse], target_crs=CRS.from_epsg(28350),
-        directory=tmp_path / "outputs", resolution_m=1,
+        [lidar, coarse],
+        target_crs=CRS.from_epsg(28350),
+        directory=tmp_path / "outputs",
+        resolution_m=1,
     )
     with rasterio.open(merged.dem) as dataset, rasterio.open(merged.source_index) as source_index:
         elev = dataset.read(1)
@@ -52,9 +61,9 @@ def test_reverse_terrain_priority(tmp_path: Path) -> None:
     _raster(b, np.full((5, 5), 2), west=0, north=5)
     first = compose_terrain([a, b], target_crs=CRS.from_epsg(28350), directory=tmp_path / "first")
     last = compose_terrain([b, a], target_crs=CRS.from_epsg(28350), directory=tmp_path / "last")
-    with rasterio.open(first.dem) as f, rasterio.open(last.dem) as l:
+    with rasterio.open(first.dem) as f, rasterio.open(last.dem) as last_dem:
         assert np.all(f.read(1) == 1)
-        assert np.all(l.read(1) == 2)
+        assert np.all(last_dem.read(1) == 2)
 
 
 def test_reject_unbounded_fine_grid(tmp_path: Path) -> None:
@@ -64,13 +73,16 @@ def test_reject_unbounded_fine_grid(tmp_path: Path) -> None:
         compose_terrain([a], target_crs=CRS.from_epsg(28350), directory=tmp_path / "out", max_cells=5)
 
 
-def _domain(exclusion=None):
+def _domain(exclusion: BaseGeometry | None = None) -> Domain:
     directions = np.zeros((12, 12), dtype=np.int16)
     directions[3:8, 6] = 6  # downstream to the AOI, entirely within source DEM
     return make_domain(
-        directions, aoi=box(6.2, 3.2, 6.8, 3.8),
-        transform=from_origin(0, 12, 1, 1), raster_bounds=(0, 0, 12, 12),
-        buffer_m=0.25, exclusions=exclusion,
+        directions,
+        aoi=box(6.2, 3.2, 6.8, 3.8),
+        transform=from_origin(0, 12, 1, 1),
+        raster_bounds=(0, 0, 12, 12),
+        buffer_m=0.25,
+        exclusions=exclusion,
     )
 
 
@@ -99,13 +111,13 @@ def test_default_detailed_analysis_omits_excluded_cells() -> None:
     domain = _domain(box(6.1, 6.1, 6.9, 6.9))
     transform = from_origin(0, 12, 1, 1)
     default_cells = detailed_analysis_cells(domain, transform=transform)
-    full_cells = detailed_analysis_cells(
-        domain, transform=transform, analyse_exclusions=True
-    )
+    full_cells = detailed_analysis_cells(domain, transform=transform, analyse_exclusions=True)
     assert np.array_equal(full_cells, domain.contributing_cells)
     assert np.all(~default_cells | full_cells)
     assert np.count_nonzero(default_cells) < np.count_nonzero(full_cells)
-    assert full_cells[5, 6] and not default_cells[5, 6]
+    assert full_cells[5, 6]
+    assert not default_cells[5, 6]
+    assert domain.excluded_area is not None
     assert domain.active.intersection(domain.excluded_area).area == pytest.approx(0)
     # Detailed analysis preference does NOT change domain delineation.
     assert domain.contributing.equals(_domain().contributing)

@@ -7,8 +7,8 @@ preserving each source's own raster resolution rather than resampling all
 hydraulic topography to the coarser watershed analysis grid.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import rasterio
 from rasterio.crs import CRS
@@ -25,12 +25,14 @@ def set_model_terrain(
 ) -> None:
     """Populate GEOM_01.tgc without disturbing original topography sources."""
     if not sources:
-        raise ValueError("No terrain sources supplied")
+        msg = "No terrain sources supplied"
+        raise ValueError(msg)
     tgc = project_dir / "model" / "GEOM_01.tgc"
     template = tgc.read_text(encoding="utf-8")
     marker = "! Read GRID Zpts == ..\\terrain\\YOUR_DEM.tif"
     if marker not in template:
-        raise ValueError("Expected TUFLOW geometry template terrain marker is missing")
+        msg = "Expected TUFLOW geometry template terrain marker is missing"
+        raise ValueError(msg)
     prepared_dir = project_dir / "terrain" / "prepared"
     commands: list[str] = []
 
@@ -38,7 +40,8 @@ def set_model_terrain(
         source = path.resolve()
         with rasterio.open(source) as dem:
             if dem.count != 1 or dem.crs is None:
-                raise ValueError(f"Cannot use invalid source DEM in TUFLOW geometry: {source}")
+                msg = f"Cannot use invalid source DEM in TUFLOW geometry: {source}"
+                raise ValueError(msg)
             if dem.crs == target_crs:
                 input_path = str(source)
             else:
@@ -48,15 +51,20 @@ def set_model_terrain(
                 if output.exists():
                     raise FileExistsError(output)
                 with WarpedVRT(
-                    dem, crs=target_crs, resampling=Resampling.bilinear, nodata=-9999.0,
+                    dem,
+                    crs=target_crs,
+                    resampling=Resampling.bilinear,
+                    nodata=-9999.0,
                 ) as vrt:
                     raster_copy(vrt, output, driver="GTiff", compress="deflate", BIGTIFF="IF_SAFER")
                 with rasterio.open(output) as reprojected:
                     if reprojected.crs != target_crs or reprojected.count != 1:
-                        raise ValueError(f"Invalid reprojected source DEM: {output}")
+                        msg = f"Invalid reprojected source DEM: {output}"
+                        raise ValueError(msg)
                 input_path = str(Path("..") / "terrain" / "prepared" / name)
         if "|" in input_path or "\n" in input_path:
-            raise ValueError("Terrain paths cannot contain TUFLOW field separators or newlines")
+            msg = "Terrain paths cannot contain TUFLOW field separators or newlines"
+            raise ValueError(msg)
         commands.append(f"Read Grid Zpts == {input_path} ! terrain priority {rank} (1 = highest)")
 
     tgc.write_text(template.replace(marker, "\n".join(commands)), encoding="utf-8")

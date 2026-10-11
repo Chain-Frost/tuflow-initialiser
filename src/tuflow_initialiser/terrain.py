@@ -6,10 +6,10 @@ The analysis DEM resolution is distinct from TUFLOW's hydraulic cell size.
 """
 
 import math
+from collections.abc import Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
 import numpy as np
 import rasterio
@@ -19,6 +19,8 @@ from rasterio.transform import from_origin
 from rasterio.vrt import WarpedVRT
 from rasterio.warp import transform_bounds
 from rasterio.windows import Window
+
+from .gis_types import RasterProfile
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,13 +48,17 @@ def compose_terrain(
     """
     paths = tuple(Path(item).resolve() for item in terrain_sources)
     if not paths or len(paths) != len(set(paths)):
-        raise ValueError("Terrain sources must be nonempty and unique, in priority order")
+        msg = "Terrain sources must be nonempty and unique, in priority order"
+        raise ValueError(msg)
     if len(paths) > np.iinfo(np.uint16).max:
-        raise ValueError("At most 65535 terrain sources are supported")
+        msg = "At most 65535 terrain sources are supported"
+        raise ValueError(msg)
     if not target_crs.is_projected or not math.isclose(target_crs.linear_units_factor[1], 1.0):
-        raise ValueError("Target CRS must be projected in metres")
+        msg = "Target CRS must be projected in metres"
+        raise ValueError(msg)
     if max_cells <= 0:
-        raise ValueError("max_cells must be positive")
+        msg = "max_cells must be positive"
+        raise ValueError(msg)
     for source in paths:
         if not source.is_file():
             raise FileNotFoundError(source)
@@ -60,24 +66,22 @@ def compose_terrain(
     target = directory / "analysis_dem.tif"
     provenance = directory / "terrain_source_index.tif"
     if target.exists() or provenance.exists():
-        raise FileExistsError("Terrain output already exists")
+        msg = "Terrain output already exists"
+        raise FileExistsError(msg)
 
     with ExitStack() as stack:
         sources = [stack.enter_context(rasterio.open(path)) for path in paths]
-        for source in sources:
-            if source.count != 1 or source.crs is None:
-                raise ValueError(f"Terrain must be single-band with CRS: {source.name}")
-            if source.transform.b or source.transform.d:
-                raise ValueError(f"Rotated terrain is unsupported: {source.name}")
+        bounds = [_validated_bounds(source, target_crs) for source in sources]
         if resolution_m is None:
             first = sources[0]
-            if first.crs != target_crs or not first.crs.is_projected:
-                raise ValueError("Specify --analysis-resolution-m if top-priority DEM requires reprojection")
+            if first.crs is None or first.crs != target_crs or not first.crs.is_projected:
+                msg = "Specify --analysis-resolution-m if top-priority DEM requires reprojection"
+                raise ValueError(msg)
             resolution_m = max(abs(first.res[0]), abs(first.res[1]))
         if not math.isfinite(resolution_m) or resolution_m <= 0:
-            raise ValueError("Analysis resolution must be finite and positive")
+            msg = "Analysis resolution must be finite and positive"
+            raise ValueError(msg)
 
-        bounds = [transform_bounds(src.crs, target_crs, *src.bounds, densify_pts=21) for src in sources]
         west = math.floor(min(b[0] for b in bounds) / resolution_m) * resolution_m
         south = math.floor(min(b[1] for b in bounds) / resolution_m) * resolution_m
         east = math.ceil(max(b[2] for b in bounds) / resolution_m) * resolution_m
@@ -85,26 +89,39 @@ def compose_terrain(
         width = round((east - west) / resolution_m)
         height = round((north - south) / resolution_m)
         if width < 3 or height < 3 or width * height > max_cells:
-            raise ValueError(f"Unsafe analysis raster size {width}x{height}; change analysis resolution")
+            msg = f"Unsafe analysis raster size {width}x{height}; change analysis resolution"
+            raise ValueError(msg)
         transform = from_origin(west, north, resolution_m, resolution_m)
         vrts = [
             stack.enter_context(
                 WarpedVRT(
-                    src, crs=target_crs, transform=transform, width=width, height=height,
-                    resampling=Resampling.bilinear, add_alpha=True,
+                    src,
+                    crs=target_crs,
+                    transform=transform,
+                    width=width,
+                    height=height,
+                    resampling=Resampling.bilinear,
+                    add_alpha=True,
                 )
             )
             for src in sources
         ]
-        profile = {
-            "driver": "GTiff", "dtype": "float32", "count": 1,
-            "height": height, "width": width, "crs": target_crs,
-            "transform": transform, "nodata": -3.4028234663852886e38,
-            "compress": "deflate", "BIGTIFF": "IF_SAFER",
+        profile: RasterProfile = {
+            "driver": "GTiff",
+            "dtype": "float32",
+            "count": 1,
+            "height": height,
+            "width": width,
+            "crs": target_crs,
+            "transform": transform,
+            "nodata": -3.4028234663852886e38,
+            "compress": "deflate",
+            "BIGTIFF": "IF_SAFER",
         }
+        provenance_profile: RasterProfile = {**profile, "dtype": "uint16", "nodata": 0}
         with (
             rasterio.open(target, "w", **profile) as dem_output,
-            rasterio.open(provenance, "w", **(profile | {"dtype": "uint16", "nodata": 0})) as provenance_output,
+            rasterio.open(provenance, "w", **provenance_profile) as provenance_output,
         ):
             for row in range(0, height, 512):
                 for col in range(0, width, 512):
@@ -123,3 +140,14 @@ def compose_terrain(
                     dem_output.write(values, 1, window=window)
                     provenance_output.write(selected, 1, window=window)
     return TerrainMosaic(target, provenance, float(resolution_m))
+
+
+def _validated_bounds(source: rasterio.io.DatasetReader, target_crs: CRS) -> tuple[float, float, float, float]:
+    """Validate source geometry and transform its extent into the target CRS."""
+    if source.count != 1 or source.crs is None:
+        msg = f"Terrain must be single-band with CRS: {source.name}"
+        raise ValueError(msg)
+    if source.transform.b or source.transform.d:
+        msg = f"Rotated terrain is unsupported: {source.name}"
+        raise ValueError(msg)
+    return transform_bounds(source.crs, target_crs, *source.bounds, densify_pts=21)

@@ -33,46 +33,58 @@ def read_aoi(path: Path, *, expected_crs: rasterio.crs.CRS) -> BaseGeometry:
     """Read polygon AOI without implicit coordinate transformation."""
     with fiona.open(path) as src:
         if not src.crs_wkt or rasterio.crs.CRS.from_wkt(src.crs_wkt) != expected_crs:
-            raise ValueError("AOI CRS must match the DEM CRS; reproject explicitly")
-        polygons = []
+            msg = "AOI CRS must match the DEM CRS; reproject explicitly"
+            raise ValueError(msg)
+        polygons: list[BaseGeometry] = []
         for feature in src:
             if feature.geometry is None:
                 continue
             geom = shape(feature.geometry)
             if geom.geom_type not in {"Polygon", "MultiPolygon"} or not geom.is_valid:
-                raise ValueError("AOI must contain valid polygon geometries")
+                msg = "AOI must contain valid polygon geometries"
+                raise ValueError(msg)
             if not geom.is_empty:
                 polygons.append(geom)
     if not polygons:
-        raise ValueError("AOI has no polygon features")
+        msg = "AOI has no polygon features"
+        raise ValueError(msg)
     result = unary_union(polygons)
     if not result.is_valid or result.is_empty:
-        raise ValueError("Invalid AOI union")
+        msg = "Invalid AOI union"
+        raise ValueError(msg)
     return result
 
 
 def check_dem(dem: rasterio.io.DatasetReader) -> None:
     """Reject incompatible DEMs rather than silently warp input."""
     if dem.count != 1 or dem.crs is None or not dem.crs.is_projected:
-        raise ValueError("DEM must have one band and projected coordinate system")
+        msg = "DEM must have one band and projected coordinate system"
+        raise ValueError(msg)
     units, factor = dem.crs.linear_units_factor
     if not np.isclose(factor, 1.0):
-        raise ValueError(f"DEM horizontal units must be metres; found {units}")
+        msg = f"DEM horizontal units must be metres; found {units}"
+        raise ValueError(msg)
     if dem.width < 3 or dem.height < 3:
-        raise ValueError("DEM too small for watershed delineation")
+        msg = "DEM too small for watershed delineation"
+        raise ValueError(msg)
     if dem.transform.b != 0 or dem.transform.d != 0:
-        raise ValueError("Rotated/skewed DEM not supported")
+        msg = "Rotated/skewed DEM not supported"
+        raise ValueError(msg)
     if not (dem.res[0] > 0 and dem.res[1] > 0):
-        raise ValueError("Invalid DEM resolution")
+        msg = "Invalid DEM resolution"
+        raise ValueError(msg)
 
 
 def mask_to_polygon(mask: NDArray[np.bool_], transform: rasterio.Affine) -> BaseGeometry:
+    """Polygonise selected raster cells and reject invalid/empty results."""
     if not np.any(mask):
-        raise ValueError("Cannot polygonise an empty raster mask")
+        msg = "Cannot polygonise an empty raster mask"
+        raise ValueError(msg)
     parts = [shape(g) for g, value in shapes(mask.astype(np.uint8), mask=mask, transform=transform) if value == 1]
     geom = unary_union(parts)
     if geom.is_empty or not geom.is_valid:
-        raise ValueError("Invalid polygonised raster mask")
+        msg = "Invalid polygonised raster mask"
+        raise ValueError(msg)
     return geom
 
 
@@ -87,36 +99,44 @@ def make_domain(
 ) -> Domain:
     """Delineate all AOI contributing cells and union with circular AOI buffer."""
     if buffer_m <= 0 or not np.isfinite(buffer_m):
-        raise ValueError("AOI buffer must be finite and positive")
+        msg = "AOI buffer must be finite and positive"
+        raise ValueError(msg)
     if not box(*raster_bounds).covers(aoi):
-        raise ValueError("AOI must lie entirely inside DEM")
+        msg = "AOI must lie entirely inside DEM"
+        raise ValueError(msg)
     seed = rasterize([(aoi, 1)], out_shape=directions.shape, transform=transform, fill=0, all_touched=True).astype(bool)
     upstream = contributing_cells(directions, seed)
     contributing = mask_to_polygon(upstream, transform)
     expanded = aoi.buffer(buffer_m)
     if not box(*raster_bounds).covers(expanded):
-        raise ValueError("AOI downstream buffer reaches DEM edge; supply larger terrain")
+        msg = "AOI downstream buffer reaches DEM edge; supply larger terrain"
+        raise ValueError(msg)
     full_active = unary_union([contributing, expanded])
     excluded_area: BaseGeometry | None = None
     if exclusions is not None:
         if exclusions.is_empty or not exclusions.is_valid:
-            raise ValueError("Exclusion polygons must be nonempty and valid")
+            msg = "Exclusion polygons must be nonempty and valid"
+            raise ValueError(msg)
         if exclusions.intersection(expanded).area > 1e-6:
-            raise ValueError("Upstream exclusions may not overlap AOI or its required circular buffer")
+            msg = "Upstream exclusions may not overlap AOI or its required circular buffer"
+            raise ValueError(msg)
         excluded_area = exclusions.intersection(contributing)
         if excluded_area.is_empty or excluded_area.area <= 0:
-            raise ValueError("Exclusions do not intersect the contributing catchment")
+            msg = "Exclusions do not intersect the contributing catchment"
+            raise ValueError(msg)
     active = full_active.difference(excluded_area) if excluded_area is not None else full_active
     if not active.is_valid or active.is_empty or not active.covers(aoi):
-        raise ValueError("Invalid or incomplete active model polygon")
+        msg = "Invalid or incomplete active model polygon"
+        raise ValueError(msg)
     xmin, ymin, xmax, ymax = active.bounds
     loc = Polygon([(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)])
     if not loc.is_valid or not loc.covers(active):
-        raise ValueError("Cardinal 2d_loc rectangle does not cover active area")
+        msg = "Cardinal 2d_loc rectangle does not cover active area"
+        raise ValueError(msg)
     if excluded_area is not None and active.intersection(excluded_area).area > 1e-6:
-        raise ValueError("Excluded upstream areas remain active")
+        msg = "Excluded upstream areas remain active"
+        raise ValueError(msg)
     return Domain(aoi, contributing, expanded, active, loc, upstream, exclusions, excluded_area)
-
 
 
 def detailed_analysis_cells(

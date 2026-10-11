@@ -15,11 +15,14 @@ def equal_area_slope(distances_m: NDArray[np.floating], elevations_m: NDArray[np
     x = np.asarray(distances_m, dtype=np.float64)
     z = np.asarray(elevations_m, dtype=np.float64)
     if x.ndim != 1 or z.ndim != 1 or len(x) < 2 or x.shape != z.shape:
-        raise ValueError("Profile requires at least two paired distances/elevations")
+        msg = "Profile requires at least two paired distances/elevations"
+        raise ValueError(msg)
     if not (np.all(np.isfinite(x)) and np.all(np.isfinite(z))):
-        raise ValueError("Non-finite stream profile data")
+        msg = "Non-finite stream profile data"
+        raise ValueError(msg)
     if not np.isclose(x[0], 0.0) or not np.all(np.diff(x) > 0):
-        raise ValueError("Profile distances must start at zero and increase upstream")
+        msg = "Profile distances must start at zero and increase upstream"
+        raise ValueError(msg)
     length = float(x[-1])
     area = float(np.trapezoid(z - z[0], x))
     return 2.0 * area / (length * length)
@@ -31,7 +34,8 @@ def stream_reaches(directions: NDArray[np.integer], stream: NDArray[np.bool_]) -
     Each reach is an ordered list of (row, col) cell centres, upstream first.
     """
     if directions.shape != stream.shape:
-        raise ValueError("Direction and stream arrays must match")
+        msg = "Direction and stream arrays must match"
+        raise ValueError(msg)
     degree: dict[tuple[int, int], int] = {}
     for r, c in zip(*np.nonzero(stream), strict=True):
         key = int(r), int(c)
@@ -48,7 +52,8 @@ def stream_reaches(directions: NDArray[np.integer], stream: NDArray[np.bool_]) -
             if downstream is None or not stream[downstream]:
                 break
             if downstream in seen:
-                raise ValueError("D8 stream cycle detected")
+                msg = "D8 stream cycle detected"
+                raise ValueError(msg)
             path.append(downstream)
             seen.add(downstream)
             at = downstream

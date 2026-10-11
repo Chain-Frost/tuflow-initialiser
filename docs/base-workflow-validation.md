@@ -63,6 +63,10 @@ format checks; the source test suite again passed all 24 tests.
 
 ## Validation boundary
 
+The later [issue #7 quality validation](issue-7-quality-validation.md) records
+clean Ruff/Pyright checks and exact real-system comparisons after the typing and
+lint repairs. Negative stream slopes remain available by reach ID in `qa.json`.
+
 TUFLOW generated authoritative empty GIS layers; it did not run a hydraulic
 simulation or check the populated model. Rainfall series, boundary conditions
 and simulation settings remain modeller work. Multiple terrain datasets,

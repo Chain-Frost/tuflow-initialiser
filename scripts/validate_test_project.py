@@ -7,12 +7,21 @@ import time
 from pathlib import Path
 
 import rasterio
-from verify_project import verify_project
+from verify_project import ProjectQA, verify_project
 
 from tuflow_initialiser.workflow import BuildConfig, build
 
 
+class RunQA(ProjectQA):
+    """Project evidence plus execution settings and fixture checksums."""
+
+    build_and_verification_seconds: float
+    fixture_sha256: dict[str, str]
+    tools: dict[str, str]
+
+
 def main() -> None:
+    """Verify shared inputs, run real tools and save reopened-output QA."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--grass-exe", required=True)
     parser.add_argument("--tuflow-exe", required=True, type=Path)
@@ -24,15 +33,18 @@ def main() -> None:
         with (fixture / name).open("rb") as stream:
             actual = hashlib.file_digest(stream, "sha256").hexdigest()
         if actual != expected:
-            raise ValueError(f"Shared fixture checksum mismatch: {name}")
+            msg = f"Shared fixture checksum mismatch: {name}"
+            raise ValueError(msg)
     output = args.output.resolve()
     if output.exists():
-        raise FileExistsError(f"Existing output is protected: {output}")
+        msg = f"Existing output is protected: {output}"
+        raise FileExistsError(msg)
     output.parent.mkdir(parents=True, exist_ok=True)
     # Derive the projection from the tracked GeoTIFF; no local .prj is required.
     with rasterio.open(fixture / "dem_epsg28350.tif") as dem:
         if dem.crs is None or dem.crs.to_epsg() != 28350:
-            raise ValueError("Shared DEM must declare EPSG:28350")
+            msg = "Shared DEM must declare EPSG:28350"
+            raise ValueError(msg)
         wkt = dem.crs.to_wkt()
     projection = output.parent / f"{output.name}_projection.prj"
     with projection.open("x", encoding="utf-8") as stream:
@@ -51,12 +63,11 @@ def main() -> None:
             grass_executable=args.grass_exe,
         )
     )
-    report = verify_project(output)
-    report["build_and_verification_seconds"] = time.perf_counter() - started
-    report["fixture_sha256"] = manifest["sha256"]
-    report["tools"] = {
-        "grass_executable": args.grass_exe,
-        "tuflow_executable": str(args.tuflow_exe.resolve()),
+    report: RunQA = {
+        **verify_project(output),
+        "build_and_verification_seconds": time.perf_counter() - started,
+        "fixture_sha256": manifest["sha256"],
+        "tools": {"grass_executable": args.grass_exe, "tuflow_executable": str(args.tuflow_exe.resolve())},
     }
     (output / "qa.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report, indent=2))

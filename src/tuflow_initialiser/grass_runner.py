@@ -15,12 +15,13 @@ class GrassResults:
 
 
 def _run(args: list[str], *, directory: Path) -> None:
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 - explicit executable/argv; no shell or command interpolation
         args, cwd=directory, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False
     )
     if result.returncode:
         tail = "\n".join((result.stdout + "\n" + result.stderr).splitlines()[-35:])
-        raise RuntimeError(f"GRASS command failed ({result.returncode}): {args!r}\n{tail}")
+        msg = f"GRASS command failed ({result.returncode}): {args!r}\n{tail}"
+        raise RuntimeError(msg)
 
 
 def process_terrain(
@@ -40,7 +41,8 @@ def process_terrain(
     if not dem.is_file():
         raise FileNotFoundError(dem)
     if work_dir.exists() and any(work_dir.iterdir()):
-        raise FileExistsError(f"GRASS staging directory must be empty: {work_dir}")
+        msg = f"GRASS staging directory must be empty: {work_dir}"
+        raise FileExistsError(msg)
     work_dir.mkdir(parents=True, exist_ok=True)
     project = work_dir / "grass_project"
     grass = str(grass_executable)
@@ -54,26 +56,35 @@ def process_terrain(
     run_grass("g.region", "raster=raw_dem")
     elevation_name = "raw_dem"
     if fill_depressions:
-        run_grass(
-            "r.fill.dir", "input=raw_dem", "output=hydro_dem", "direction=fill_direction", "--overwrite"
-        )
+        run_grass("r.fill.dir", "input=raw_dem", "output=hydro_dem", "direction=fill_direction", "--overwrite")
         elevation_name = "hydro_dem"
     run_grass(
-        "r.watershed", "-s", f"elevation={elevation_name}",
-        "accumulation=upstream_cells", "drainage=d8_direction",
-        f"memory={memory_mb}", "--overwrite",
+        "r.watershed",
+        "-s",
+        f"elevation={elevation_name}",
+        "accumulation=upstream_cells",
+        "drainage=d8_direction",
+        f"memory={memory_mb}",
+        "--overwrite",
     )
 
     direction = work_dir / "d8_direction.tif"
     accumulation = work_dir / "upstream_cells.tif"
     conditioned = work_dir / "hydro_dem.tif"
     run_grass("r.out.gdal", "input=d8_direction", f"output={direction}", "format=GTiff", "type=Int16", "--overwrite")
-    run_grass("r.out.gdal", "input=upstream_cells", f"output={accumulation}", "format=GTiff", "type=Float64", "--overwrite")
     run_grass(
-        "r.out.gdal", f"input={elevation_name}", f"output={conditioned}",
-        "format=GTiff", "type=Float32", "--overwrite",
+        "r.out.gdal", "input=upstream_cells", f"output={accumulation}", "format=GTiff", "type=Float64", "--overwrite"
+    )
+    run_grass(
+        "r.out.gdal",
+        f"input={elevation_name}",
+        f"output={conditioned}",
+        "format=GTiff",
+        "type=Float32",
+        "--overwrite",
     )
     for raster in (direction, accumulation, conditioned):
         if not raster.is_file():
-            raise FileNotFoundError(f"GRASS output missing: {raster}")
+            msg = f"GRASS output missing: {raster}"
+            raise FileNotFoundError(msg)
     return GrassResults(direction, accumulation, conditioned)

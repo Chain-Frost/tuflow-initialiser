@@ -8,14 +8,14 @@ from shapely.geometry import box
 from tuflow_initialiser.geometry import make_domain, mask_to_polygon
 
 
-def test_mask_vectorisation():
+def test_mask_vectorisation() -> None:
     mask = np.zeros((4, 4), dtype=bool)
     mask[1, 1] = True
     polygon = mask_to_polygon(mask, Affine.translation(0, 4) * Affine.scale(1, -1))
     assert polygon.area == pytest.approx(1.0)
 
 
-def test_buffer_requires_terrain_coverage():
+def test_buffer_requires_terrain_coverage() -> None:
     directions = np.full((8, 8), 6, dtype=np.int16)
     directions[0, :] = 0
     directions[:, 0] = 0

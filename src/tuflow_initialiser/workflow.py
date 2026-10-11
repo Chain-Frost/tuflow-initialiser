@@ -11,11 +11,13 @@ import fiona
 import numpy as np
 import rasterio
 from numpy.typing import NDArray
+from rasterio.features import rasterize
 from shapely.geometry import LineString, mapping
 from shapely.ops import unary_union
 
 from .d8 import headwater_extensions, stream_mask
 from .geometry import Domain, check_dem, detailed_analysis_cells, make_domain, read_aoi
+from .gis_types import LayerSchema
 from .gis_writer import write_analysis, write_tuflow_layers
 from .grass_runner import process_terrain
 from .model_terrain import set_model_terrain
@@ -50,9 +52,11 @@ class BuildConfig:
 
 def _consistent_grids(dem: rasterio.io.DatasetReader, other: rasterio.io.DatasetReader) -> None:
     if other.width != dem.width or other.height != dem.height or other.crs != dem.crs:
-        raise ValueError("GRASS raster geometry or CRS differs from original DEM")
+        msg = "GRASS raster geometry or CRS differs from original DEM"
+        raise ValueError(msg)
     if not np.allclose(tuple(other.transform), tuple(dem.transform), rtol=0, atol=1e-7):
-        raise ValueError("GRASS output transform differs from original DEM")
+        msg = "GRASS output transform differs from original DEM"
+        raise ValueError(msg)
 
 
 def _line(path: list[tuple[int, int]], transform: rasterio.Affine) -> LineString:
@@ -72,18 +76,19 @@ def _write_streams(
     analyse_exclusions: bool,
     domain: Domain,
 ) -> None:
-    analysis_cells = detailed_analysis_cells(
-        domain, transform=transform, analyse_exclusions=analyse_exclusions
+    analysis_cells = detailed_analysis_cells(domain, transform=transform, analyse_exclusions=analyse_exclusions)
+    threshold = (
+        stream_mask(
+            accumulation,
+            cell_area_m2=abs(transform.a * transform.e),
+            min_area_m2=min_area_m2,
+        )
+        & contributing
+        & analysis_cells
     )
-    threshold = stream_mask(
-        accumulation, cell_area_m2=abs(transform.a * transform.e),
-        min_area_m2=min_area_m2,
-    ) & contributing & analysis_cells
     reaches = stream_reaches(directions, threshold)
-    extensions = headwater_extensions(
-        directions, threshold, accumulation, allowed_cells=analysis_cells
-    )
-    schema = {
+    extensions = headwater_extensions(directions, threshold, accumulation, allowed_cells=analysis_cells)
+    schema: LayerSchema = {
         "geometry": "LineString",
         "properties": {
             "path_id": "int",
@@ -99,7 +104,8 @@ def _write_streams(
         ):
             geom = _line(group, transform)
             if geom.length <= 0:
-                raise ValueError("Degenerate stream path")
+                msg = "Degenerate stream path"
+                raise ValueError(msg)
             # Stream paths are stored headwater->downstream; the profile is
             # reversed for equal-area calculations (outlet->headwater).
             downstream_first = group[::-1]
@@ -108,14 +114,19 @@ def _write_streams(
             elevations = np.array([float(terrain[row, col]) for row, col in downstream_first])
             slope = equal_area_slope(distances, elevations)
             if not math.isfinite(slope):
-                raise ValueError("Nonfinite equal-area stream slope")
-            layer.write({
-                "geometry": mapping(geom),
-                "properties": {
-                    "path_id": n, "path_type": path_type,
-                    "length_m": geom.length, "slope_ea": slope,
-                },
-            })
+                msg = "Nonfinite equal-area stream slope"
+                raise ValueError(msg)
+            layer.write(
+                {
+                    "geometry": mapping(geom),
+                    "properties": {
+                        "path_id": n,
+                        "path_type": path_type,
+                        "length_m": geom.length,
+                        "slope_ea": slope,
+                    },
+                }
+            )
 
 
 def build(config: BuildConfig) -> Path:
@@ -124,37 +135,54 @@ def build(config: BuildConfig) -> Path:
     Existing target projects are never overwritten.
     """
     if config.output.exists():
-        raise FileExistsError(f"Existing project directory is protected: {config.output}")
+        msg = f"Existing project directory is protected: {config.output}"
+        raise FileExistsError(msg)
     if config.buffer_m <= 0 or config.stream_threshold_m2 <= 0:
-        raise ValueError("Buffer and stream threshold must be positive")
+        msg = "Buffer and stream threshold must be positive"
+        raise ValueError(msg)
     if not config.terrains or any(not p.is_file() for p in config.terrains):
-        raise FileNotFoundError("At least one existing terrain raster is required")
+        msg = "At least one existing terrain raster is required"
+        raise FileNotFoundError(msg)
     if not config.aoi.is_file() or not config.prj.is_file():
-        raise FileNotFoundError("AOI and project projection file are required")
+        msg = "AOI and project projection file are required"
+        raise FileNotFoundError(msg)
     if any(not p.is_file() for p in config.exclusions):
-        raise FileNotFoundError("One or more exclusion polygon files do not exist")
+        msg = "One or more exclusion polygon files do not exist"
+        raise FileNotFoundError(msg)
     config.output.parent.mkdir(parents=True, exist_ok=True)
     target_crs = rasterio.crs.CRS.from_wkt(config.prj.read_text(encoding="utf-8-sig"))
     with tempfile.TemporaryDirectory(prefix="tuflow-init-", dir=config.output.parent) as temp:
         scratch = Path(temp)
         mosaic = compose_terrain(
-            config.terrains, target_crs=target_crs,
-            directory=scratch / "mosaic", resolution_m=config.analysis_resolution_m,
+            config.terrains,
+            target_crs=target_crs,
+            directory=scratch / "mosaic",
+            resolution_m=config.analysis_resolution_m,
             max_cells=config.max_analysis_cells,
         )
         with rasterio.open(mosaic.dem) as terrain:
             check_dem(terrain)
-            aoi = read_aoi(config.aoi, expected_crs=terrain.crs)
+            terrain_crs = terrain.crs
+            if terrain_crs is None:
+                msg = "Analysis terrain has no CRS"
+                raise ValueError(msg)
+            aoi = read_aoi(config.aoi, expected_crs=terrain_crs)
             exclusions = (
-                unary_union([read_aoi(p, expected_crs=terrain.crs) for p in config.exclusions])
-                if config.exclusions else None
+                unary_union([read_aoi(p, expected_crs=terrain_crs) for p in config.exclusions])
+                if config.exclusions
+                else None
             )
             grass = process_terrain(
-                mosaic.dem, work_dir=scratch / "grass",
+                mosaic.dem,
+                work_dir=scratch / "grass",
                 grass_executable=config.grass_executable,
                 fill_depressions=config.fill_depressions,
             )
-            with rasterio.open(grass.flow_direction) as direction_ds, rasterio.open(grass.accumulation) as acc_ds, rasterio.open(grass.conditioned_dem) as hydro_ds:
+            with (
+                rasterio.open(grass.flow_direction) as direction_ds,
+                rasterio.open(grass.accumulation) as acc_ds,
+                rasterio.open(grass.conditioned_dem) as hydro_ds,
+            ):
                 for ds in (direction_ds, acc_ds, hydro_ds):
                     _consistent_grids(terrain, ds)
                 directions = direction_ds.read(1, masked=True).filled(0).astype(np.int16)
@@ -162,23 +190,31 @@ def build(config: BuildConfig) -> Path:
                 conditioned = hydro_ds.read(1, masked=True).filled(np.nan).astype(np.float64)
                 original = terrain.read(1, masked=True).filled(np.nan).astype(np.float64)
                 domain: Domain = make_domain(
-                    directions, aoi=aoi, transform=terrain.transform,
-                    raster_bounds=tuple(terrain.bounds), buffer_m=config.buffer_m,
+                    directions,
+                    aoi=aoi,
+                    transform=terrain.transform,
+                    raster_bounds=terrain.bounds,
+                    buffer_m=config.buffer_m,
                     exclusions=exclusions,
                 )
                 # No missing source/conditioned terrain anywhere used in the
                 # computed model domain (not just within the AOI).
-                from rasterio.features import rasterize
-
                 model_pixels = rasterize(
-                    [(domain.active, 1)], out_shape=directions.shape,
-                    transform=terrain.transform, all_touched=True, fill=0,
+                    [(domain.active, 1)],
+                    out_shape=directions.shape,
+                    transform=terrain.transform,
+                    all_touched=True,
+                    fill=0,
                 ).astype(bool)
-                if not np.all(np.isfinite(original[model_pixels])) or not np.all(np.isfinite(conditioned[model_pixels])):
-                    raise ValueError("NoData or nonfinite DEM elevations inside model area")
+                if not np.all(np.isfinite(original[model_pixels])) or not np.all(
+                    np.isfinite(conditioned[model_pixels])
+                ):
+                    msg = "NoData or nonfinite DEM elevations inside model area"
+                    raise ValueError(msg)
                 diff = conditioned[model_pixels] - original[model_pixels]
                 if config.max_fill_depth_m < 0 or np.max(diff) > config.max_fill_depth_m:
-                    raise ValueError("Hydrology-only terrain fill exceeds max_fill_depth_m")
+                    msg = "Hydrology-only terrain fill exceeds max_fill_depth_m"
+                    raise ValueError(msg)
                 stage_project = scratch / "project"
                 initialize_tuflow_project(
                     TuflowProjectConfig(
@@ -193,35 +229,53 @@ def build(config: BuildConfig) -> Path:
                     )
                 )
                 set_model_terrain(
-                    project_dir=stage_project, sources=config.terrains, target_crs=target_crs,
+                    project_dir=stage_project,
+                    sources=config.terrains,
+                    target_crs=target_crs,
                 )
                 write_tuflow_layers(
                     stage_project, scenario=config.scenario, domain=domain, rainfall_name=config.rainfall_name
                 )
                 analysis = stage_project / "model" / "gis" / "hydrology.gpkg"
                 write_analysis(
-                    analysis, domain=domain, crs_wkt=terrain.crs.to_wkt(),
+                    analysis,
+                    domain=domain,
+                    crs_wkt=terrain_crs.to_wkt(),
                     analyse_exclusions=config.analyse_exclusions,
                 )
                 stream_gpkg = stage_project / "model" / "gis" / "streams.gpkg"
                 _write_streams(
-                    stream_gpkg, directions=directions, accumulation=accum,
-                    contributing=domain.contributing_cells, terrain=original,
-                    transform=terrain.transform, crs_wkt=terrain.crs.to_wkt(),
+                    stream_gpkg,
+                    directions=directions,
+                    accumulation=accum,
+                    contributing=domain.contributing_cells,
+                    terrain=original,
+                    transform=terrain.transform,
+                    crs_wkt=terrain_crs.to_wkt(),
                     min_area_m2=config.stream_threshold_m2,
                     analyse_exclusions=config.analyse_exclusions,
                     domain=domain,
                 )
                 target_analysis = stage_project / "terrain" / "hydrology"
                 target_analysis.mkdir(parents=True)
-                for file in (grass.flow_direction, grass.accumulation, grass.conditioned_dem, mosaic.dem, mosaic.source_index):
+                for file in (
+                    grass.flow_direction,
+                    grass.accumulation,
+                    grass.conditioned_dem,
+                    mosaic.dem,
+                    mosaic.source_index,
+                ):
                     shutil.copy2(file, target_analysis / file.name)
                 (target_analysis / "terrain_sources.json").write_text(
                     json.dumps(
-                        {"priority": "first_valid_wins",
-                         "analysis_resolution_m": mosaic.resolution_m,
-                         "sources": [{"priority": index, "path": str(path.resolve())}
-                                     for index, path in enumerate(config.terrains, start=1)]},
+                        {
+                            "priority": "first_valid_wins",
+                            "analysis_resolution_m": mosaic.resolution_m,
+                            "sources": [
+                                {"priority": index, "path": str(path.resolve())}
+                                for index, path in enumerate(config.terrains, start=1)
+                            ],
+                        },
                         indent=2,
                     ),
                     encoding="utf-8",
@@ -251,6 +305,7 @@ def build(config: BuildConfig) -> Path:
                     )
             # Atomic rename when scratch and destination share a filesystem.
             if config.output.exists():
-                raise FileExistsError(f"Output appeared during processing: {config.output}")
+                msg = f"Output appeared during processing: {config.output}"
+                raise FileExistsError(msg)
             stage_project.rename(config.output)
     return config.output
