@@ -61,7 +61,12 @@ def write_tuflow_layers(
         name: directory / f"{name}_{scenario}_01_R.gpkg" for name in ("2d_code", "2d_rf", "2d_loc")
     }
     _write_features(paths["2d_code"], domain.active, {"Code": 1})
-    _write_features(paths["2d_rf"], domain.active, {"Name": rainfall_name, "f1": 1.0})
+    with fiona.open(paths["2d_rf"]) as rainfall_layer:
+        rf_fields = rainfall_layer.schema["properties"]
+        attributes: dict[str, float | int | str] = {"Name": rainfall_name, "f1": 1.0}
+        if "f2" in rf_fields:
+            attributes["f2"] = 1.0
+    _write_features(paths["2d_rf"], domain.active, attributes)
     _write_features(paths["2d_loc"], domain.location, {})
     return paths
 
@@ -76,7 +81,7 @@ def write_analysis(path: Path, *, domain: Domain, crs_wkt: str) -> None:
     }
     for name, geom in outputs.items():
         with fiona.open(
-            path, mode="w" if not path.exists() else "a",
+            path, mode="w",
             driver="GPKG", layer=name,
             schema={"geometry": "MultiPolygon", "properties": {"area_km2": "float"}},
             crs_wkt=crs_wkt,
