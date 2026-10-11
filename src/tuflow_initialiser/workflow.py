@@ -1,10 +1,13 @@
 """Stage, process, validate and publish complete 2D ROG initial model GIS."""
 
+import json
 import math
 import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+from shapely.ops import unary_union
 
 import fiona
 import numpy as np
@@ -17,6 +20,7 @@ from .geometry import Domain, check_dem, make_domain, read_aoi
 from .gis_writer import write_analysis, write_tuflow_layers
 from .grass_runner import process_terrain
 from .profiles import equal_area_slope, stream_reaches
+from .terrain import compose_terrain
 from .project_setup import TuflowProjectConfig, initialize_tuflow_project
 
 
@@ -24,8 +28,11 @@ from .project_setup import TuflowProjectConfig, initialize_tuflow_project
 class BuildConfig:
     """Explicit requirements: no hydraulic cell-size or ryan-tools dependency."""
 
-    dem: Path
+    terrains: tuple[Path, ...]
     aoi: Path
+    exclusions: tuple[Path, ...] = ()
+    analysis_resolution_m: float | None = None
+    max_analysis_cells: int = 100_000_000
     output: Path
     name: str
     scenario: str
@@ -112,18 +119,30 @@ def build(config: BuildConfig) -> Path:
         raise FileExistsError(f"Existing project directory is protected: {config.output}")
     if config.buffer_m <= 0 or config.stream_threshold_m2 <= 0:
         raise ValueError("Buffer and stream threshold must be positive")
-    if not config.dem.is_file() or not config.aoi.is_file() or not config.prj.is_file():
-        raise FileNotFoundError("DEM, AOI and projection files are required")
+    if not config.terrains or any(not p.is_file() for p in config.terrains):
+        raise FileNotFoundError("At least one existing terrain raster is required")
+    if not config.aoi.is_file() or not config.prj.is_file():
+        raise FileNotFoundError("AOI and project projection file are required")
+    if any(not p.is_file() for p in config.exclusions):
+        raise FileNotFoundError("One or more exclusion polygon files do not exist")
     config.output.parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(config.dem) as terrain:
-        check_dem(terrain)
-        aoi = read_aoi(config.aoi, expected_crs=terrain.crs)
-        if rasterio.crs.CRS.from_wkt(config.prj.read_text(encoding="utf-8-sig")) != terrain.crs:
-            raise ValueError("TUFLOW .prj and DEM must have identical coordinate reference systems")
-        with tempfile.TemporaryDirectory(prefix="tuflow-init-", dir=config.output.parent) as temp:
-            scratch = Path(temp)
+    target_crs = rasterio.crs.CRS.from_wkt(config.prj.read_text(encoding="utf-8-sig"))
+    with tempfile.TemporaryDirectory(prefix="tuflow-init-", dir=config.output.parent) as temp:
+        scratch = Path(temp)
+        mosaic = compose_terrain(
+            config.terrains, target_crs=target_crs,
+            directory=scratch / "mosaic", resolution_m=config.analysis_resolution_m,
+            max_cells=config.max_analysis_cells,
+        )
+        with rasterio.open(mosaic.dem) as terrain:
+            check_dem(terrain)
+            aoi = read_aoi(config.aoi, expected_crs=terrain.crs)
+            exclusions = (
+                unary_union([read_aoi(p, expected_crs=terrain.crs) for p in config.exclusions])
+                if config.exclusions else None
+            )
             grass = process_terrain(
-                config.dem, work_dir=scratch / "grass",
+                mosaic.dem, work_dir=scratch / "grass",
                 grass_executable=config.grass_executable,
                 fill_depressions=config.fill_depressions,
             )
@@ -137,6 +156,7 @@ def build(config: BuildConfig) -> Path:
                 domain: Domain = make_domain(
                     directions, aoi=aoi, transform=terrain.transform,
                     raster_bounds=tuple(terrain.bounds), buffer_m=config.buffer_m,
+                    exclusions=exclusions,
                 )
                 # No missing source/conditioned terrain anywhere used in the
                 # computed model domain (not just within the AOI).
@@ -178,8 +198,25 @@ def build(config: BuildConfig) -> Path:
                 )
                 target_analysis = stage_project / "terrain" / "hydrology"
                 target_analysis.mkdir(parents=True)
-                for file in (grass.flow_direction, grass.accumulation, grass.conditioned_dem):
+                for file in (grass.flow_direction, grass.accumulation, grass.conditioned_dem, mosaic.dem, mosaic.source_index):
                     shutil.copy2(file, target_analysis / file.name)
+                (target_analysis / "terrain_sources.json").write_text(
+                    json.dumps(
+                        {"priority": "first_valid_wins",
+                         "analysis_resolution_m": mosaic.resolution_m,
+                         "sources": [{"priority": index, "path": str(path.resolve())}
+                                     for index, path in enumerate(config.terrains, start=1)]},
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+                if domain.excluded_area is not None:
+                    (stage_project / "EXCLUSIONS_REQUIRE_REVIEW.txt").write_text(
+                        "Upstream catchments have been excluded from 2D code and rainfall. "
+                        "Their incoming flow has NOT been replaced with BCs. "
+                        "The model is not hydraulically complete until a modeller handles these interfaces.\n",
+                        encoding="utf-8",
+                    )
             # Atomic rename when scratch and destination share a filesystem.
             if config.output.exists():
                 raise FileExistsError(f"Output appeared during processing: {config.output}")
