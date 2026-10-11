@@ -7,21 +7,20 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from shapely.ops import unary_union
-
 import fiona
 import numpy as np
 import rasterio
 from numpy.typing import NDArray
 from shapely.geometry import LineString, mapping
+from shapely.ops import unary_union
 
 from .d8 import headwater_extensions, stream_mask
 from .geometry import Domain, check_dem, make_domain, read_aoi
 from .gis_writer import write_analysis, write_tuflow_layers
 from .grass_runner import process_terrain
 from .profiles import equal_area_slope, stream_reaches
-from .terrain import compose_terrain
 from .project_setup import TuflowProjectConfig, initialize_tuflow_project
+from .terrain import compose_terrain
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,15 +29,15 @@ class BuildConfig:
 
     terrains: tuple[Path, ...]
     aoi: Path
-    exclusions: tuple[Path, ...] = ()
-    analysis_resolution_m: float | None = None
-    max_analysis_cells: int = 100_000_000
     output: Path
     name: str
     scenario: str
     prj: Path
     tuflow_executable: Path
     rainfall_name: str
+    exclusions: tuple[Path, ...] = ()
+    analysis_resolution_m: float | None = None
+    max_analysis_cells: int = 100_000_000
     grass_executable: str = "grass"
     buffer_m: float = 500.0
     stream_threshold_m2: float = 100_000.0
