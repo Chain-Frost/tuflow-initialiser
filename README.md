@@ -21,6 +21,25 @@ Place downloaded SRTM/LiDAR data in `data/` or `datasets/`, and generated test p
 
 The ignore rules do not remove files that Git is already tracking. Check pending files with `git status --short` before committing.
 
+## Code quality
+
+The repo adopts the Ruff and strict Pyright baseline from
+[`ryan-culverts`](https://github.com/Chain-Frost/ryan-culverts):
+Python 3.14, Ruff 0.16.6, Google-style docstrings, consistent imports and
+formatting, and strict typing across `src/`, `tests/` and `scripts/`.
+Run locally after installing the `dev` extra:
+
+```powershell
+python -m ruff check .
+python -m ruff format --check .
+python -m pyright
+python -m pytest -q
+```
+
+These checks are included in CI. Initial Ruff/Pyright failures indicate
+**outstanding source remediation**, not an installation failure or a
+reason to disable strict checking. See the open code-quality issue.
+
 ## Example
 
 ```powershell

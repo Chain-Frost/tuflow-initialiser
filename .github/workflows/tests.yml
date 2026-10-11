@@ -28,3 +28,13 @@ jobs:
         run: python -m compileall -q src tests
       - name: CLI help
         run: tuflow-initialiser --help
+
+      - name: Ruff lint (ryan-culverts rules)
+        if: ${{ !cancelled() }}
+        run: python -m ruff check .
+      - name: Ruff formatting
+        if: ${{ !cancelled() }}
+        run: python -m ruff format --check .
+      - name: Pyright strict typing
+        if: ${{ !cancelled() }}
+        run: python -m pyright

@@ -12,7 +12,7 @@ license = "LicenseRef-SUL-1.0"
 dependencies = ["numpy", "rasterio", "fiona", "shapely>=2", "loguru"]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff", "pyright"]
+dev = ["pytest>=9", "ruff==0.16.6", "pyright>=1.1.410"]
 
 [project.scripts]
 tuflow-initialiser = "tuflow_initialiser.cli:main"
@@ -23,12 +23,10 @@ where = ["src"]
 [tool.setuptools.package-data]
 tuflow_initialiser = ["resources/*.qml", "resources/tuflow_templates/model/*", "resources/tuflow_templates/runs/*"]
 
-[tool.ruff]
-target-version = "py314"
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
 
 [tool.pyright]
+# Follow ryan-culverts: check package, tests and validation scripts strictly.
+include = ["src", "tests", "scripts"]
+extraPaths = ["src"]
 pythonVersion = "3.14"
 typeCheckingMode = "strict"

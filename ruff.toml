@@ -1,0 +1,97 @@
+required-version = "==0.16.6"
+target-version = "py314"
+line-length = 120
+
+[lint]
+select = [
+    # Core correctness and Python errors.
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "B",      # flake8-bugbear
+    "PLE",    # Pylint errors
+    "PLW",    # Pylint warnings
+    "RUF",    # Ruff-specific rules
+    # Modern Python.
+    "UP",     # pyupgrade
+    "FURB",   # refurb
+    "FLY",    # flynt-style string improvements
+    "SLOT",   # avoid per-instance dictionaries on immutable built-in subclasses
+    # Imports.
+    "I",      # isort
+    "ICN",    # import conventions
+    "INP",    # prevent accidental implicit namespace packages
+    # Internal imports deliberately remain package-relative where possible.
+    # Code quality and maintainability.
+    "A",      # built-in shadowing
+    "ARG",    # unused arguments
+    "BLE",    # broad exception handling
+    "FBT",    # require explicit, keyword-oriented boolean APIs
+    "C4",     # comprehensions
+    "C90",    # McCabe complexity
+    "EM",     # exception-message style
+    "ERA",    # commented-out code
+    "ISC",    # implicit string concatenation
+    "N",      # naming conventions
+    "PERF",   # performance
+    "PGH",    # pygrep-hooks / code hygiene
+    "PIE",    # miscellaneous Python improvements
+    "PLC",    # Pylint convention
+    "RET",    # return-statement improvements
+    "RSE",    # raise-statement improvements
+    "SIM",    # simplification
+    "SLF",    # private-member access boundaries
+    "TRY",    # exception-handling practices
+    # Type annotations.
+    "ANN",    # type annotation coverage
+    # Documentation.
+    "D",      # pydocstyle
+    # Logging.
+    "G",      # logging-format checks
+    "LOG",    # logging-specific checks
+    # Security.
+    "S",      # flake8-bandit
+    # Filesystem and general hygiene.
+    "EXE",    # executable/shebang checks
+    "PTH",    # pathlib usage
+    "T10",    # debugger statements
+    "YTT",    # sys.version checks
+    # Testing.
+    "PT",     # pytest style and correctness
+]
+
+ignore = [
+    # Ruff formatter compatibility.
+    "D206",   # docstring tab indentation
+    "D300",   # triple-single-quoted docstrings
+    "E111",   # indentation with invalid multiple
+    "E114",   # indentation with invalid multiple in comments
+    "E117",   # over-indented
+    # The formatter cannot or should not wrap every valid construct.
+    "E501",   # line too long
+    # Constructors and protocol methods inherit their public type documentation.
+    "D105",   # missing docstring in magic method
+    "D107",   # missing docstring in __init__
+]
+
+[lint.mccabe]
+# Allow moderately complex engineering/numerical routines before requiring refactoring.
+max-complexity = 15
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.per-file-ignores]
+"tests/**/*.py" = [
+    "D",      # Test functions do not need production-quality docstrings.
+    "INP001", # Pytest modules need not be a Python import package.
+    "S101",   # Assertions are normal in unit/integration tests.
+]
+"scripts/**/*.py" = [
+    "INP001", # Standalone validation utilities are not an import package.
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
