@@ -25,6 +25,8 @@ class Domain:
     active: BaseGeometry
     location: Polygon
     contributing_cells: NDArray[np.bool_]
+    exclusions: BaseGeometry | None = None
+    excluded_area: BaseGeometry | None = None
 
 
 def read_aoi(path: Path, *, expected_crs: rasterio.crs.CRS) -> BaseGeometry:
@@ -81,6 +83,7 @@ def make_domain(
     transform: rasterio.Affine,
     raster_bounds: tuple[float, float, float, float],
     buffer_m: float = 500.0,
+    exclusions: BaseGeometry | None = None,
 ) -> Domain:
     """Delineate all AOI contributing cells and union with circular AOI buffer."""
     if buffer_m <= 0 or not np.isfinite(buffer_m):
@@ -93,11 +96,23 @@ def make_domain(
     expanded = aoi.buffer(buffer_m)
     if not box(*raster_bounds).covers(expanded):
         raise ValueError("AOI downstream buffer reaches DEM edge; supply larger terrain")
-    active = unary_union([contributing, expanded])
+    full_active = unary_union([contributing, expanded])
+    excluded_area: BaseGeometry | None = None
+    if exclusions is not None:
+        if exclusions.is_empty or not exclusions.is_valid:
+            raise ValueError("Exclusion polygons must be nonempty and valid")
+        if exclusions.intersection(expanded).area > 1e-6:
+            raise ValueError("Upstream exclusions may not overlap AOI or its required circular buffer")
+        excluded_area = exclusions.intersection(contributing)
+        if excluded_area.is_empty or excluded_area.area <= 0:
+            raise ValueError("Exclusions do not intersect the contributing catchment")
+    active = full_active.difference(excluded_area) if excluded_area is not None else full_active
     if not active.is_valid or active.is_empty or not active.covers(aoi):
         raise ValueError("Invalid or incomplete active model polygon")
     xmin, ymin, xmax, ymax = active.bounds
     loc = Polygon([(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)])
     if not loc.is_valid or not loc.covers(active):
         raise ValueError("Cardinal 2d_loc rectangle does not cover active area")
-    return Domain(aoi, contributing, expanded, active, loc, upstream)
+    if excluded_area is not None and active.intersection(excluded_area).area > 1e-6:
+        raise ValueError("Excluded upstream areas remain active")
+    return Domain(aoi, contributing, expanded, active, loc, upstream, exclusions, excluded_area)
