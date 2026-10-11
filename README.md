@@ -35,7 +35,7 @@ tuflow-initialiser build `
 
 **Terrain priority:** first `--terrain` has highest priority and takes precedence wherever it contains valid elevations. Lower-priority sources fill its gaps. Hydrology uses a separately resampled analysis DEM; the TUFLOW geometry control file reads the original/source-resolution DEMs in reverse order so high-priority topography prevails.
 
-**Exclusions:** the full upstream catchment is preserved in analysis outputs, but exclusions are removed from `2d_code` and identically from `2d_rf`. Inflow replacement and outlet BC design are **not** generated: excluded catchments may require manual boundary treatment before simulation.
+**Exclusions:** the full upstream catchment is preserved in analysis outputs, but exclusions are removed from `2d_code` and identically from `2d_rf`. Detailed stream/headwater analysis of these excluded areas is **off by default**, since existing catchment information may already be available. Add `--analyse-exclusions` when detailed analysis is required. GRASS terrain processing and D8 connectivity still run over the entire analysis DEM to establish contributing drainage accurately. Inflow replacement and outlet BC design are **not** generated: excluded catchments may require manual boundary treatment before simulation.
 
 **Development status:** Draft PR, not production validated. The tool requires Windows GRASS/TUFLOW live testing and engineering review. No runtime dependency on `ryan-tools`; copying extra `ryan-tools` project utilities remains optional.
 

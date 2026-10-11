@@ -25,6 +25,11 @@ def _parser() -> argparse.ArgumentParser:
                       help="Repeat in highest-to-lowest priority order (e.g. LiDAR then SRTM)")
     make.add_argument("--exclude", type=Path, action="append", default=[],
                       help="Optional upstream catchment polygon to remove from model; repeatable")
+    make.add_argument(
+        "--analyse-exclusions", action="store_true",
+        help="Include excluded catchments in detailed stream and terrain-characteristic analysis "
+             "(default: skip detailed analysis while preserving required flow routing)",
+    )
     make.add_argument("--analysis-resolution-m", type=float, default=None,
                       help="Hydrology raster resolution in metres; not the TUFLOW cell size")
     make.add_argument("--aoi", required=True, type=Path, help="Vector AOI, in DEM CRS")
@@ -64,6 +69,7 @@ def main() -> int:
             BuildConfig(
                 terrains=tuple(args.terrain), aoi=args.aoi, output=args.output,
                 exclusions=tuple(args.exclude),
+                analyse_exclusions=args.analyse_exclusions,
                 analysis_resolution_m=args.analysis_resolution_m,
                 name=args.name, scenario=args.scenario,
                 prj=args.prj, tuflow_executable=args.tuflow_exe,

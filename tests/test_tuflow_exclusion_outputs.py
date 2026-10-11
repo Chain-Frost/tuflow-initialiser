@@ -65,4 +65,16 @@ def test_exclusions_are_removed_from_both_tuflow_layers(tmp_path: Path) -> None:
     assert {
         "aoi", "contributing_area", "aoi_buffer", "active_extent",
         "exclusions_supplied", "exclusions_applied",
+        "detailed_analysis_extent", "exclusions_analysis_skipped",
     } <= set(fiona.listlayers(analysis))
+    with fiona.open(analysis, layer="detailed_analysis_extent") as detail:
+        clipped = unary_union([shape(row.geometry) for row in detail])
+    assert domain.excluded_area is not None
+    assert clipped.intersection(domain.excluded_area).area == 0
+
+    alternate = model / "model" / "gis" / "hydrology_with_excluded_analysis.gpkg"
+    write_analysis(alternate, domain=domain, crs_wkt=crs, analyse_exclusions=True)
+    assert "exclusions_analysis_skipped" not in fiona.listlayers(alternate)
+    with fiona.open(alternate, layer="detailed_analysis_extent") as detail:
+        included = unary_union([shape(row.geometry) for row in detail])
+    assert included.equals(domain.contributing)

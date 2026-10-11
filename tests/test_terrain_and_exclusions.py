@@ -12,7 +12,7 @@ from rasterio.crs import CRS
 from rasterio.transform import from_origin
 from shapely.geometry import box
 
-from tuflow_initialiser.geometry import make_domain
+from tuflow_initialiser.geometry import detailed_analysis_cells, make_domain
 from tuflow_initialiser.terrain import compose_terrain
 
 
@@ -93,3 +93,27 @@ def test_exclusions_must_not_remove_aoi_buffer() -> None:
 def test_exclusions_outside_upstream_area_rejected() -> None:
     with pytest.raises(ValueError, match="do not intersect"):
         _domain(box(1.2, 1.2, 1.8, 1.8))
+
+
+def test_default_detailed_analysis_omits_excluded_cells() -> None:
+    domain = _domain(box(6.1, 6.1, 6.9, 6.9))
+    transform = from_origin(0, 12, 1, 1)
+    default_cells = detailed_analysis_cells(domain, transform=transform)
+    full_cells = detailed_analysis_cells(
+        domain, transform=transform, analyse_exclusions=True
+    )
+    assert np.array_equal(full_cells, domain.contributing_cells)
+    assert np.all(~default_cells | full_cells)
+    assert np.count_nonzero(default_cells) < np.count_nonzero(full_cells)
+    assert full_cells[5, 6] and not default_cells[5, 6]
+    assert domain.active.intersection(domain.excluded_area).area == pytest.approx(0)
+    # Detailed analysis preference does NOT change domain delineation.
+    assert domain.contributing.equals(_domain().contributing)
+
+
+def test_no_exclusions_analysis_switch_is_noop() -> None:
+    domain = _domain()
+    transform = from_origin(0, 12, 1, 1)
+    default = detailed_analysis_cells(domain, transform=transform)
+    explicit = detailed_analysis_cells(domain, transform=transform, analyse_exclusions=True)
+    assert np.array_equal(default, explicit)

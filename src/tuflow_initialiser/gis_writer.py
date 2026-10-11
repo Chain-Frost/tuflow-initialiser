@@ -71,18 +71,28 @@ def write_tuflow_layers(
     return paths
 
 
-def write_analysis(path: Path, *, domain: Domain, crs_wkt: str) -> None:
+def write_analysis(
+    path: Path, *, domain: Domain, crs_wkt: str,
+    analyse_exclusions: bool = False,
+) -> None:
     """Write plain analysis geometries separate from canonical TUFLOW GIS."""
     outputs = {
         "aoi": domain.aoi,
         "contributing_area": domain.contributing,
         "aoi_buffer": domain.buffer,
         "active_extent": domain.active,
+        "detailed_analysis_extent": (
+            domain.contributing
+            if analyse_exclusions or domain.excluded_area is None
+            else domain.contributing.difference(domain.excluded_area)
+        ),
     }
     if domain.exclusions is not None:
         outputs["exclusions_supplied"] = domain.exclusions
     if domain.excluded_area is not None:
         outputs["exclusions_applied"] = domain.excluded_area
+        if not analyse_exclusions:
+            outputs["exclusions_analysis_skipped"] = domain.excluded_area
     for name, geom in outputs.items():
         with fiona.open(
             path, mode="w",
