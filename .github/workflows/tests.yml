@@ -7,17 +7,21 @@ on:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.14"]
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install
-        run: python -m pip install -e ".[dev]"
+          python-version: "3.14"
+      - name: Install binary GIS wheels from Ryan Tools wheel index
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install --upgrade --extra-index-url https://gisidx.github.io/gwi --only-binary=:all: fiona rasterio gdal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install --prefer-binary --extra-index-url https://gisidx.github.io/gwi --only-binary=fiona --only-binary=rasterio --only-binary=gdal -e ".[dev]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Unit tests
         run: python -m pytest -q
       - name: Python compilation
