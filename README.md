@@ -38,7 +38,7 @@ python -m pytest -q
 
 These checks are included in CI. Initial Ruff/Pyright failures indicate
 **outstanding source remediation**, not an installation failure or a
-reason to disable strict checking. See the open code-quality issue.
+reason to disable strict checking. See [code-quality issue #7](https://github.com/Chain-Frost/tuflow-initialiser/issues/7).
 
 ## Example
 
