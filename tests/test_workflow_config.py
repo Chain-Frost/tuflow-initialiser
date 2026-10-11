@@ -9,7 +9,7 @@ from tuflow_initialiser.workflow import BuildConfig, build
 
 def config_for(tmp_path: Path) -> BuildConfig:
     return BuildConfig(
-        dem=tmp_path / "dem.tif", aoi=tmp_path / "aoi.gpkg",
+        terrains=(tmp_path / "dem.tif",), aoi=tmp_path / "aoi.gpkg",
         output=tmp_path / "output", name="Example", scenario="baseline",
         prj=tmp_path / "proj.prj", tuflow_executable=tmp_path / "TUFLOW.exe",
         rainfall_name="RF01",
