@@ -18,6 +18,7 @@ from .d8 import headwater_extensions, stream_mask
 from .geometry import Domain, check_dem, make_domain, read_aoi
 from .gis_writer import write_analysis, write_tuflow_layers
 from .grass_runner import process_terrain
+from .model_terrain import set_model_terrain
 from .profiles import equal_area_slope, stream_reaches
 from .project_setup import TuflowProjectConfig, initialize_tuflow_project
 from .terrain import compose_terrain
@@ -182,6 +183,9 @@ def build(config: BuildConfig) -> Path:
                         copy_utilities=config.utility_source_root is not None,
                         utility_source_root=config.utility_source_root,
                     )
+                )
+                set_model_terrain(
+                    project_dir=stage_project, sources=config.terrains, target_crs=target_crs,
                 )
                 write_tuflow_layers(
                     stage_project, scenario=config.scenario, domain=domain, rainfall_name=config.rainfall_name
