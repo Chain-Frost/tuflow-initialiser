@@ -15,6 +15,12 @@ python -m pip install --upgrade --extra-index-url https://gisidx.github.io/gwi -
 python -m pip install --prefer-binary --extra-index-url https://gisidx.github.io/gwi --only-binary=fiona --only-binary=rasterio --only-binary=gdal -e ".[dev]"
 ```
 
+## Local data and test runs
+
+Place downloaded SRTM/LiDAR data in `data/` or `datasets/`, and generated test projects in `outputs/` (all ignored by Git). Use `tests/fixtures/` for small, deliberately committed test inputs and reference files. Raster/GIS extensions are **not** globally ignored because reproducible fixtures and maintained TUFLOW templates are valid source assets.
+
+The ignore rules do not remove files that Git is already tracking. Check pending files with `git status --short` before committing.
+
 ## Example
 
 ```powershell
