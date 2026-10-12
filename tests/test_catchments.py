@@ -5,15 +5,17 @@ from pathlib import Path
 import fiona
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 from rasterio.crs import CRS
 from rasterio.transform import from_origin
 from shapely.geometry import box
+from shapely.geometry.base import BaseGeometry
 
 from tuflow_initialiser.catchment_outputs import write_inflow_products, write_inflow_summary
 from tuflow_initialiser.catchments import delineate_inflows
 
 
-def _base() -> tuple[np.ndarray, np.ndarray]:
+def _base() -> tuple[NDArray[np.int16], NDArray[np.float64]]:
     directions = np.zeros((11, 11), dtype=np.int16)
     elevations = np.zeros((11, 11), dtype=np.float64)
     for row in range(11):
@@ -21,7 +23,7 @@ def _base() -> tuple[np.ndarray, np.ndarray]:
     return directions, elevations
 
 
-def _aoi_cell(row: int, col: int) -> object:
+def _aoi_cell(row: int, col: int) -> BaseGeometry:
     # Grid origin (0, 11), positive northing increasing upwards.
     return box(col + 0.15, 11 - row - 0.85, col + 0.85, 11 - row - 0.15)
 
