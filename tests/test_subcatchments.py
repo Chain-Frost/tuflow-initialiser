@@ -198,3 +198,74 @@ def test_failure_on_missing_channel_analysis_cells() -> None:
             [box(5.15, 2.15, 5.85, 2.85)],
             transform=from_origin(0, 11, 1, 1),
         )
+
+
+def test_two_disconnected_aois_have_independent_direct_catchments() -> None:
+    directions = np.zeros((11, 11), dtype=np.int16)
+    directions[3:7, 2] = 6
+    directions[4:8, 8] = 6
+    seeds = np.zeros_like(directions, dtype=bool)
+    seeds[7, 2] = True
+    seeds[8, 8] = True
+    contributing = contributing_cells(directions, seeds, require_complete=False)
+    terrain = np.tile(np.arange(11.0, 0, -1)[:, None], (1, 11))
+    result = delineate_reach_subcatchments(
+        directions,
+        np.ones(directions.shape),
+        contributing,
+        contributing,
+        np.zeros(directions.shape, dtype=bool),
+        terrain,
+        [box(2.2, 3.2, 2.8, 3.8), box(8.2, 2.2, 8.8, 2.8)],
+        transform=from_origin(0, 11, 1, 1),
+    )
+    assert result.channel_reach_count == 0
+    assert [item.aoi_id for item in result.subcatchments] == [1, 2]
+    assert [item.local_area_m2 for item in result.subcatchments] == [5.0, 5.0]
+    assert result.full_contributing_cell_count == 10
+
+
+def test_nested_aois_share_cumulative_cells_without_double_counting_local_area() -> None:
+    directions = np.zeros((11, 11), dtype=np.int16)
+    directions[2:9, 5] = 6
+    seeds = np.zeros_like(directions, dtype=bool)
+    seeds[5, 5] = True
+    seeds[9, 5] = True
+    contributing = contributing_cells(directions, seeds, require_complete=False)
+    stream = np.zeros_like(directions, dtype=bool)
+    stream[3:10, 5] = True
+    terrain = np.tile(np.arange(11.0, 0, -1)[:, None], (1, 11))
+    result = delineate_reach_subcatchments(
+        directions,
+        np.ones(directions.shape),
+        contributing,
+        contributing,
+        stream,
+        terrain,
+        [box(5.2, 5.2, 5.8, 5.8), box(5.2, 1.2, 5.8, 1.8)],
+        transform=from_origin(0, 11, 1, 1),
+    )
+    assert sum(item.local_area_m2 for item in result.subcatchments) == pytest.approx(
+        np.count_nonzero(contributing)
+    )
+    assert result.full_contributing_cell_count == 8
+    assert result.subcatchments[0].cumulative_area_m2 == pytest.approx(8.0)
+
+
+def test_signed_negative_reach_slope_is_retained() -> None:
+    directions, terrain, aoi, stream = _network()
+    terrain = -terrain
+    contributing = contributing_cells(directions, aoi, require_complete=False)
+    result = delineate_reach_subcatchments(
+        directions,
+        np.ones(directions.shape),
+        contributing,
+        contributing,
+        stream,
+        terrain,
+        [box(5.15, 2.15, 5.85, 2.85)],
+        transform=from_origin(0, 11, 1, 1),
+    )
+    channels = [item for item in result.subcatchments if item.kind == "channel_reach"]
+    assert channels
+    assert all(item.stream_slope_ea is not None and item.stream_slope_ea < 0 for item in channels)
