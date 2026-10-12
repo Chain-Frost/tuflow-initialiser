@@ -9,6 +9,7 @@ their cumulative upstream coverage (e.g. nested AOIs).
 import math
 from collections import deque
 from dataclasses import dataclass
+from itertools import pairwise
 
 import numpy as np
 import rasterio
@@ -152,12 +153,12 @@ def _longest_path(
         if len(reverse) > upstream_ptr.size:
             msg = "Invalid longest-path upstream pointers"
             raise ValueError(msg)
-    route = tuple([*reversed(reverse), outlet])
+    route = (*reversed(reverse), outlet)
     first = math.hypot((root[1] - outlet[1]) * transform.a, (root[0] - outlet[0]) * transform.e)
     length = float(best[root]) + first
     downstream_first = tuple(reversed(route))
     distances = [0.0]
-    for left, right in zip(downstream_first, downstream_first[1:]):
+    for left, right in pairwise(downstream_first):
         distances.append(
             distances[-1] + math.hypot((left[1] - right[1]) * transform.a, (left[0] - right[0]) * transform.e)
         )
