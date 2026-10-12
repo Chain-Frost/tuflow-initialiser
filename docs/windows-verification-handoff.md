@@ -8,6 +8,33 @@ not install GRASS or execute a populated TUFLOW model**.
 
 ## 1. Baseline repeat on the tracked SRTM/two-AOI fixture
 
+### Latest masked-D8 verification: 13 October 2026
+
+The installed-tool baseline was rerun against clean commit `007c24d`, including
+the masked-D8 validity fix, using GRASS 8.5 and TUFLOW 2026.3. Fixture hashes and
+all reopened-output QA checks passed. Build plus QA took 13.08 seconds.
+
+Evidence remains local and ignored:
+
+- `validation/masked-d8-2026-10-13/project/qa.json`
+- `validation/masked-d8-2026-10-13/comparison.json`
+- `validation/masked-d8-2026-10-13.log`
+
+Compared with the retained 12 October corrected baseline, all five hydrology
+rasters have exact grid/CRS/pixel equality. Every layer in the streams, hydrology,
+inflow catchments and three TUFLOW scenario GeoPackages has identical schema,
+CRS, feature count, attributes and geometry. This includes 805 stream paths,
+535 subcatchments, 111 AOI entry catchments and 111 longest paths. All 11 negative
+stream slopes remain unchanged.
+
+Current local checks: **56 tests passed**, no skips/deselections; Ruff lint and
+format checks passed; strict Pyright reported zero errors/warnings. This closes
+the installed-tool baseline rerun gap for the masked-D8 change. The tracked
+fixture does not exercise every invalid-routing rejection case; those retain
+regression-test coverage. No populated TUFLOW model check or hydraulic simulation
+was performed. PR readiness and merge status were not changed; no commit, push
+or remote update was performed for this rerun.
+
 ### Completed local run: 12 October 2026
 
 The baseline was rerun from commit `35d98bb` with the local fixes described below,
