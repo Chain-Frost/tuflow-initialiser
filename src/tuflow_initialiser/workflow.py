@@ -15,8 +15,10 @@ from rasterio.features import rasterize
 from shapely.geometry import LineString, mapping
 from shapely.ops import unary_union
 
+from .catchment_outputs import write_inflow_products, write_inflow_summary
+from .catchments import delineate_inflows
 from .d8 import headwater_extensions, stream_mask
-from .geometry import Domain, check_dem, detailed_analysis_cells, make_domain, read_aoi
+from .geometry import Domain, check_dem, detailed_analysis_cells, make_domain, read_aoi_features
 from .gis_types import LayerSchema
 from .gis_writer import write_analysis, write_tuflow_layers
 from .grass_runner import process_terrain
@@ -166,7 +168,8 @@ def build(config: BuildConfig) -> Path:
             if terrain_crs is None:
                 msg = "Analysis terrain has no CRS"
                 raise ValueError(msg)
-            aoi = read_aoi(config.aoi, expected_crs=terrain_crs)
+            aois = read_aoi_features(config.aoi, expected_crs=terrain_crs)
+            aoi = unary_union(aois)
             exclusions = (
                 unary_union([read_aoi(p, expected_crs=terrain_crs) for p in config.exclusions])
                 if config.exclusions
@@ -256,8 +259,27 @@ def build(config: BuildConfig) -> Path:
                     analyse_exclusions=config.analyse_exclusions,
                     domain=domain,
                 )
+                # Preserve the pre-existing streams.gpkg regression baseline.
+                # Additional AOI-entry catchments and LFPs are separate QA layers.
+                inflows = delineate_inflows(
+                    directions,
+                    original,
+                    aois,
+                    transform=terrain.transform,
+                    analyse_cells=detailed_analysis_cells(
+                        domain, transform=terrain.transform, analyse_exclusions=config.analyse_exclusions
+                    ),
+                )
+                write_inflow_products(
+                    stage_project / "model" / "gis" / "inflow_catchments.gpkg",
+                    aois=aois,
+                    inflows=inflows,
+                    transform=terrain.transform,
+                    crs_wkt=terrain_crs.to_wkt(),
+                )
                 target_analysis = stage_project / "terrain" / "hydrology"
                 target_analysis.mkdir(parents=True)
+                write_inflow_summary(target_analysis / "aoi_inflows.json", inflows)
                 for file in (
                     grass.flow_direction,
                     grass.accumulation,
