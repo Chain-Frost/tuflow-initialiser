@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from affine import Affine
+from rasterio.transform import from_origin
 from shapely.geometry import box
 
 from tuflow_initialiser.geometry import make_domain, mask_to_polygon
@@ -11,7 +11,7 @@ from tuflow_initialiser.geometry import make_domain, mask_to_polygon
 def test_mask_vectorisation() -> None:
     mask = np.zeros((4, 4), dtype=bool)
     mask[1, 1] = True
-    polygon = mask_to_polygon(mask, Affine.translation(0, 4) * Affine.scale(1, -1))
+    polygon = mask_to_polygon(mask, from_origin(0, 4, 1, 1))
     assert polygon.area == pytest.approx(1.0)
 
 
@@ -23,7 +23,7 @@ def test_buffer_requires_terrain_coverage() -> None:
         make_domain(
             directions,
             aoi=box(3, 3, 4, 4),
-            transform=Affine.translation(0, 8) * Affine.scale(1, -1),
+            transform=from_origin(0, 8, 1, 1),
             raster_bounds=(0, 0, 8, 8),
             buffer_m=500,
         )
