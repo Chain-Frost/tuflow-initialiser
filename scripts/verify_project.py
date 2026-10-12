@@ -62,6 +62,16 @@ class SubcatchmentsQA(TypedDict):
     negative_channel_slopes: int
 
 
+class InflowQA(TypedDict):
+    """Reopened AOI entry and inferred longest-path attribution."""
+
+    aois: int
+    entry_catchments: int
+    longest_flow_paths: int
+    excluded_from_path_analysis: int
+    signed_negative_paths: int
+
+
 class ProjectQA(TypedDict):
     """Reopened GIS and terrain evidence for a fixed EXG/RF01 project."""
 
@@ -70,6 +80,7 @@ class ProjectQA(TypedDict):
     analysis_grid: GridQA
     streams: StreamsQA
     subcatchments: SubcatchmentsQA
+    inflows: InflowQA
 
 
 def _require(message: str, *, condition: bool) -> None:
@@ -177,6 +188,63 @@ def verify_subcatchments(project: Path, contributing: BaseGeometry) -> Subcatchm
     )
 
 
+def verify_inflows(project: Path) -> InflowQA:
+    """Reopen AOI-entry polygons and full inferred D8 flow paths for QA."""
+    path = project / "model/gis/inflow_catchments.gpkg"
+    required = {"aoi_inputs", "aoi_inflow_catchments", "longest_flow_paths"}
+    _require("Missing AOI inflow GIS layers", condition=required <= set(fiona.listlayers(path)))
+    with fiona.open(path, layer="aoi_inputs") as src:
+        aois = list(src)
+    _require("No AOI input geometries", condition=bool(aois))
+    aoi_ids = {int(_number(row, "aoi_id")) for row in aois}
+    _require("AOI identifiers missing or duplicated", condition=len(aoi_ids) == len(aois))
+
+    with fiona.open(path, layer="aoi_inflow_catchments") as src:
+        entries = list(src)
+    catch_ids: set[int] = set()
+    completed: set[int] = set()
+    excluded = 0
+    for entry in entries:
+        _require("Invalid AOI entry polygon", condition=feature_geometry(entry).is_valid)
+        catch_id = int(_number(entry, "catch_id"))
+        _require("Duplicate AOI entry catchment ID", condition=catch_id not in catch_ids)
+        catch_ids.add(catch_id)
+        _require(
+            "AOI entry belongs to missing AOI identifier",
+            condition=int(_number(entry, "aoi_id")) in aoi_ids,
+        )
+        if entry.properties["status"] == "complete":
+            completed.add(catch_id)
+        elif entry.properties["status"] == "excluded_from_detailed_analysis":
+            excluded += 1
+        else:
+            msg = "Unrecognised AOI entry analysis status"
+            raise ValueError(msg)
+    with fiona.open(path, layer="longest_flow_paths") as src:
+        paths = list(src)
+    ids: set[int] = set()
+    negative = 0
+    for feature in paths:
+        _require("Invalid longest flow path geometry", condition=feature_geometry(feature).is_valid)
+        path_id = int(_number(feature, "catch_id"))
+        _require("Duplicate longest-path catchment ID", condition=path_id not in ids)
+        ids.add(path_id)
+        length = _number(feature, "length_m")
+        _require(
+            "Inferred LFP length differs from recorded geometry",
+            condition=length > 0 and math.isclose(feature_geometry(feature).length, length, rel_tol=1e-8, abs_tol=0.01),
+        )
+        negative += _number(feature, "slope_ea") < 0
+    _require("Missing or extra AOI longest paths", condition=ids == completed)
+    return InflowQA(
+        aois=len(aois),
+        entry_catchments=len(entries),
+        longest_flow_paths=len(paths),
+        excluded_from_path_analysis=excluded,
+        signed_negative_paths=negative,
+    )
+
+
 def verify_project(project: Path) -> ProjectQA:
     """Verify a fixed EXG/RF01 project with checks that survive python -O."""
     layers: dict[str, LayerQA] = {}
@@ -226,4 +294,5 @@ def verify_project(project: Path) -> ProjectQA:
         analysis_grid=grid,
         streams=verify_streams(project),
         subcatchments=verify_subcatchments(project, contributing),
+        inflows=verify_inflows(project),
     )
