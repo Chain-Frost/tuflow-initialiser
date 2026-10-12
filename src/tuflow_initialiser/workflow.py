@@ -18,7 +18,7 @@ from shapely.ops import unary_union
 from .catchment_outputs import write_inflow_products, write_inflow_summary
 from .catchments import delineate_inflows
 from .d8 import headwater_extensions, stream_mask
-from .geometry import Domain, check_dem, detailed_analysis_cells, make_domain, read_aoi_features
+from .geometry import Domain, check_dem, detailed_analysis_cells, make_domain, read_aoi, read_aoi_features
 from .gis_types import LayerSchema
 from .gis_writer import write_analysis, write_tuflow_layers
 from .grass_runner import process_terrain
