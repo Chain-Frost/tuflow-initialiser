@@ -293,6 +293,12 @@ def build(config: BuildConfig) -> Path:
                         {
                             "priority": "first_valid_wins",
                             "analysis_resolution_m": mosaic.resolution_m,
+                            "vertical_datum_status": "unverified_requires_engineering_review",
+                            "overlap_seam_status": (
+                                "unverified_requires_engineering_review"
+                                if len(config.terrains) > 1
+                                else "single_source_not_applicable"
+                            ),
                             "sources": [
                                 {"priority": index, "path": str(path.resolve())}
                                 for index, path in enumerate(config.terrains, start=1)
