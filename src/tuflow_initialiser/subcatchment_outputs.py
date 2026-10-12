@@ -8,6 +8,7 @@ import rasterio
 from shapely.geometry import MultiPolygon, Polygon, mapping
 from shapely.geometry.base import BaseGeometry
 
+from .coordinates import pixel_centre
 from .gis_types import LayerSchema
 from .subcatchments import SubcatchmentResult
 
@@ -54,7 +55,7 @@ def write_reach_subcatchments(
         hydrology_gpkg, "w", driver="GPKG", layer="subcatchments", schema=schema, crs_wkt=crs_wkt
     ) as output:
         for item in result.subcatchments:
-            xy = transform * (item.outlet[1] + 0.5, item.outlet[0] + 0.5) if item.outlet is not None else None
+            xy = pixel_centre(transform, *item.outlet) if item.outlet is not None else None
             output.write(
                 {
                     "geometry": mapping(_polygonal(item.polygon)),
