@@ -45,7 +45,9 @@ def test_two_inflows_to_one_aoi_are_not_combined(tmp_path: Path) -> None:
     assert all(item.length_m == pytest.approx(4.0) for item in catchments)
     assert all(item.slope_ea == pytest.approx(1) for item in catchments)
     gpkg = tmp_path / "catchments.gpkg"
-    write_inflow_products(gpkg, aois=[aoi], inflows=catchments, transform=transform, crs_wkt=CRS.from_epsg(28350).to_wkt())
+    write_inflow_products(
+        gpkg, aois=[aoi], inflows=catchments, transform=transform, crs_wkt=CRS.from_epsg(28350).to_wkt()
+    )
     assert set(fiona.listlayers(gpkg)) == {"aoi_inputs", "aoi_inflow_catchments", "longest_flow_paths"}
     with fiona.open(gpkg, layer="longest_flow_paths") as lines:
         records = list(lines)
@@ -63,9 +65,7 @@ def test_maximum_geometric_length_not_tributary_size() -> None:
     directions[7, 3] = 8
     directions[6, 2] = 7
     directions[8, 2] = 1
-    catchments = delineate_inflows(
-        directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1)
-    )
+    catchments = delineate_inflows(directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1))
     assert len(catchments) == 1
     assert catchments[0].path[0] == (3, 5)
     assert catchments[0].path[-1] == (8, 5)
@@ -79,9 +79,7 @@ def test_distinct_aois_and_nested_cumulative_areas() -> None:
     directions[2:9, 4] = 6
     upstream = _aoi_cell(5, 4)
     downstream = _aoi_cell(9, 4)
-    catchments = delineate_inflows(
-        directions, elevations, [upstream, downstream], transform=from_origin(0, 11, 1, 1)
-    )
+    catchments = delineate_inflows(directions, elevations, [upstream, downstream], transform=from_origin(0, 11, 1, 1))
     assert len(catchments) == 2
     assert catchments[0].aoi_id == 1
     assert catchments[1].aoi_id == 2
@@ -97,17 +95,14 @@ def test_excluded_entry_is_retained_but_no_incomplete_lfp() -> None:
     selected = np.ones_like(directions, dtype=bool)
     selected[5, 5] = False
     inflows = delineate_inflows(
-        directions, elevations, [_aoi_cell(8, 5)],
-        transform=from_origin(0, 11, 1, 1), analyse_cells=selected
+        directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1), analyse_cells=selected
     )
     assert len(inflows) == 1
     assert inflows[0].local_area_m2 == pytest.approx(5.0)
     assert inflows[0].status == "excluded_from_detailed_analysis"
     assert not inflows[0].path
     assert inflows[0].length_m is None
-    complete = delineate_inflows(
-        directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1)
-    )
+    complete = delineate_inflows(directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1))
     assert complete[0].status == "complete"
     assert complete[0].length_m == pytest.approx(5.0)
 
@@ -116,9 +111,7 @@ def test_longest_path_preserves_signed_negative_slope() -> None:
     directions, elevations = _base()
     directions[3:8, 5] = 6
     elevations[3:9, 5] = np.arange(6.0)
-    result = delineate_inflows(
-        directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1)
-    )
+    result = delineate_inflows(directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1))
     assert result[0].slope_ea == pytest.approx(-1)
 
 
@@ -127,8 +120,7 @@ def test_multiple_disconnected_aois_keep_separate_ids() -> None:
     directions[3:7, 2] = 6
     directions[2:7, 8] = 6
     result = delineate_inflows(
-        directions, elevations, [_aoi_cell(7, 2), _aoi_cell(7, 8)],
-        transform=from_origin(0, 11, 1, 1)
+        directions, elevations, [_aoi_cell(7, 2), _aoi_cell(7, 8)], transform=from_origin(0, 11, 1, 1)
     )
     assert len(result) == 2
     assert [x.aoi_id for x in result] == [1, 2]
