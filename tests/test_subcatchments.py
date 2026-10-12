@@ -14,7 +14,7 @@ from shapely.ops import unary_union
 
 from tuflow_initialiser.d8 import contributing_cells
 from tuflow_initialiser.subcatchment_outputs import write_reach_subcatchments, write_reach_subcatchment_summary
-from tuflow_initialiser.subcatchments import delineate_reach_subcatchments
+from tuflow_initialiser.subcatchments import SubcatchmentResult, delineate_reach_subcatchments
 
 
 def _network() -> tuple[NDArray[np.int16], NDArray[np.float64], NDArray[np.bool_], NDArray[np.bool_]]:
@@ -46,7 +46,7 @@ def _run(
     stream_override: NDArray[np.bool_] | None = None,
     excluded: tuple[int, int] | None = None,
     metre_step: float = 1.0,
-) -> tuple[object, NDArray[np.bool_]]:
+) -> tuple[SubcatchmentResult, NDArray[np.bool_]]:
     d8, elevations, aoi, stream = _network()
     contributing = contributing_cells(d8, aoi, require_complete=False)
     detailed = contributing.copy()
