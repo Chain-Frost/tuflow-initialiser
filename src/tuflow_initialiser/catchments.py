@@ -41,6 +41,8 @@ class InflowCatchment:
     path: tuple[Cell, ...]
     length_m: float | None
     slope_ea: float | None
+    source_elevation_m: float | None
+    outlet_elevation_m: float | None
     status: str
 
 
@@ -248,6 +250,8 @@ def delineate_inflows(
                     path=route,
                     length_m=length,
                     slope_ea=slope,
+                    source_elevation_m=float(elevations[route[0]]) if route else None,
+                    outlet_elevation_m=float(elevations[route[-1]]) if route else None,
                     status=status,
                 )
             )
