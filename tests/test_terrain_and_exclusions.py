@@ -10,7 +10,8 @@ import pytest
 import rasterio
 from rasterio.crs import CRS
 from rasterio.transform import from_origin
-from shapely.geometry import box
+from shapely.geometry import Polygon, box
+from shapely.ops import unary_union
 from shapely.geometry.base import BaseGeometry
 
 from tuflow_initialiser.geometry import Domain, detailed_analysis_cells, make_domain
@@ -129,3 +130,25 @@ def test_no_exclusions_analysis_switch_is_noop() -> None:
     default = detailed_analysis_cells(domain, transform=transform)
     explicit = detailed_analysis_cells(domain, transform=transform, analyse_exclusions=True)
     assert np.array_equal(default, explicit)
+
+
+def test_exclusion_polygon_hole_preserves_an_active_island() -> None:
+    outer = [(6.0, 6.0), (7.0, 6.0), (7.0, 7.0), (6.0, 7.0)]
+    hole = [(6.25, 6.25), (6.75, 6.25), (6.75, 6.75), (6.25, 6.75)]
+    clipped = _domain(Polygon(outer, holes=[hole]))
+    base = _domain()
+    assert clipped.excluded_area is not None
+    assert clipped.contributing.equals(base.contributing)
+    assert clipped.active.covers(box(6.3, 6.3, 6.7, 6.7))
+    assert clipped.active.area == pytest.approx(base.active.area - clipped.excluded_area.area)
+
+
+def test_overlapping_exclusions_are_union_subtracted_once() -> None:
+    boxes = [box(6.1, 6.1, 6.7, 6.9), box(6.3, 6.3, 6.9, 6.95)]
+    combined = unary_union(boxes)
+    domain = _domain(combined)
+    base = _domain()
+    assert domain.excluded_area is not None
+    assert domain.excluded_area.area < sum(item.area for item in boxes)
+    assert base.active.area - domain.active.area == pytest.approx(domain.excluded_area.area)
+    assert domain.active.intersection(domain.excluded_area).area == pytest.approx(0)
