@@ -37,6 +37,35 @@ def _check(directions: NDArray[np.integer], seeds: NDArray[np.bool_]) -> None:
         raise ValueError(msg)
 
 
+def _check_valid_cells(
+    directions: NDArray[np.integer], aoi: NDArray[np.bool_], valid_cells: NDArray[np.bool_] | None
+) -> None:
+    """Distinguish unknown D8 data from genuine flow sinks."""
+    if valid_cells is None:
+        return
+    if valid_cells.shape != directions.shape:
+        msg = "D8 validity mask must match the direction grid"
+        raise ValueError(msg)
+    if np.any(aoi & ~valid_cells):
+        msg = "AOI intersects NoData/unknown flow directions"
+        raise ValueError(msg)
+
+
+def _check_unknown_upstream_boundary(
+    visited: NDArray[np.bool_], valid_cells: NDArray[np.bool_] | None
+) -> None:
+    """Fail where a NoData pixel could be an omitted upstream contributor."""
+    if valid_cells is None:
+        return
+    height, width = valid_cells.shape
+    for row, col in zip(*np.nonzero(visited), strict=True):
+        for dr, dc in OFFSETS.values():
+            nr, nc = int(row) + dr, int(col) + dc
+            if 0 <= nr < height and 0 <= nc < width and not valid_cells[nr, nc]:
+                msg = "Contributing catchment borders NoData/unknown D8 terrain; supply complete DEM"
+                raise ValueError(msg)
+
+
 def next_cell(directions: NDArray[np.integer], row: int, col: int) -> tuple[int, int] | None:
     """Return downstream cell or None for sink/edge/outgoing direction."""
     direction = int(directions[row, col])
@@ -73,13 +102,7 @@ def contributing_cells(
     algorithm scales linearly with contributing cell count.
     """
     _check(directions, aoi)
-    if valid_cells is not None:
-        if valid_cells.shape != directions.shape:
-            msg = "D8 validity mask must match the direction grid"
-            raise ValueError(msg)
-        if np.any(aoi & ~valid_cells):
-            msg = "AOI intersects NoData/unknown flow directions"
-            raise ValueError(msg)
+    _check_valid_cells(directions, aoi, valid_cells)
     visited = aoi.copy()
     queue: deque[tuple[int, int]] = deque((int(r), int(c)) for r, c in zip(*np.nonzero(aoi), strict=True))
     while queue:
@@ -89,17 +112,7 @@ def contributing_cells(
                 visited[ur, uc] = True
                 queue.append((ur, uc))
 
-    if valid_cells is not None:
-        # Unknown neighbours may discharge into selected cells. Their D8
-        # directions cannot be read as sinks: fail closed instead of silently
-        # truncating the delineated contributing catchment.
-        for row, col in zip(*np.nonzero(visited), strict=True):
-            for dr, dc in OFFSETS.values():
-                nr, nc = int(row) + dr, int(col) + dc
-                if 0 <= nr < directions.shape[0] and 0 <= nc < directions.shape[1]:
-                    if not valid_cells[nr, nc]:
-                        msg = "Contributing catchment borders NoData/unknown D8 terrain; supply complete DEM"
-                        raise ValueError(msg)
+    _check_unknown_upstream_boundary(visited, valid_cells)
 
     # A directed cycle cannot represent terrain that drains to the AOI.
     # Detect any such cycle within the complete selected drainage subgraph.
