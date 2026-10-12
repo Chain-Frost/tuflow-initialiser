@@ -36,9 +36,9 @@ python -m pyright
 python -m pytest -q
 ```
 
-These checks are included in CI. Initial Ruff/Pyright failures indicate
-**outstanding source remediation**, not an installation failure or a
-reason to disable strict checking. See [code-quality issue #7](https://github.com/Chain-Frost/tuflow-initialiser/issues/7).
+These checks are included in CI and currently pass. See the completed
+[code-quality issue #7](https://github.com/Chain-Frost/tuflow-initialiser/issues/7).
+Fix source errors rather than disabling strict checking.
 
 ## Example
 
@@ -64,7 +64,7 @@ tuflow-initialiser build `
 
 **Catchment outputs:** The build writes `model/gis/inflow_catchments.gpkg` (per-entry inferred longest D8 flow paths), `model/gis/hydrology.gpkg` (`subcatchments` local stream-reach partitions and downstream topology), and corresponding audit JSON in `terrain/hydrology/`. See [definitions and limitations](docs/aoi-entry-catchments.md) and the [Windows integration checklist](docs/windows-verification-handoff.md).
 
-**Development status:** Draft PR, not production validated. The tool requires Windows GRASS/TUFLOW live testing and engineering review. No runtime dependency on `ryan-tools`; copying extra `ryan-tools` project utilities remains optional.
+**Development status:** The tracked two-AOI real Windows GRASS/TUFLOW reference build has passed (see [Windows baseline report](docs/windows-verification-handoff.md)), and unit tests, GIS checks, Ruff and strict typing run in hosted CI. This does **not** constitute a hydraulic simulation or physical engineering sign-off. Representative [QGIS catchment inspection (#8)](https://github.com/Chain-Frost/tuflow-initialiser/issues/8), [LiDAR/SRTM/vertical datum verification (#9)](https://github.com/Chain-Frost/tuflow-initialiser/issues/9) and [upstream exclusion validation (#10)](https://github.com/Chain-Frost/tuflow-initialiser/issues/10) are documented future follow-ups. No runtime dependency on `ryan-tools`; copying extra project utilities remains optional.
 
 See [architecture](docs/architecture.md), [validation](docs/validation.md), [migration](docs/migration.md), and [future work](docs/future-work.md).
 
