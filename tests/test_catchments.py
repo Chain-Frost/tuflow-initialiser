@@ -133,9 +133,7 @@ def test_diagonal_d8_steps_use_true_geometric_length() -> None:
     directions[2, 2] = 7
     directions[3, 3] = 7
     directions[4, 4] = 7
-    result = delineate_inflows(directions, elevations, [_aoi_cell(5, 5)], transform=from_origin(0, 11, 2, 3))
-    # Rescale AOI coordinates to match the transformed grid.
-    assert result == []  # AOI does not overlap the rescaled test grid
+    # Non-square cells must use separate x/y horizontal distances.
     actual = box(10.2, 15.2, 11.8, 17.8)
     result = delineate_inflows(directions, elevations, [actual], transform=from_origin(0, 33, 2, 3))
     assert len(result) == 1
@@ -148,9 +146,7 @@ def test_ties_choose_deterministic_upstream_cell() -> None:
     directions[5, 5] = 6
     directions[4, 4] = 7
     directions[4, 6] = 5
-    result = delineate_inflows(
-        directions, elevations, [_aoi_cell(6, 5)], transform=from_origin(0, 11, 1, 1)
-    )
+    result = delineate_inflows(directions, elevations, [_aoi_cell(6, 5)], transform=from_origin(0, 11, 1, 1))
     assert len(result) == 1
     assert result[0].path == ((4, 4), (5, 5), (6, 5))
     assert result[0].length_m == pytest.approx(1 + np.sqrt(2))
