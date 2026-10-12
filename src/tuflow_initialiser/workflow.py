@@ -24,9 +24,9 @@ from .gis_writer import write_analysis, write_tuflow_layers
 from .grass_runner import process_terrain
 from .model_terrain import set_model_terrain
 from .profiles import equal_area_slope, stream_reaches
+from .project_setup import TuflowProjectConfig, initialize_tuflow_project
 from .subcatchment_outputs import write_reach_subcatchment_summary, write_reach_subcatchments
 from .subcatchments import delineate_reach_subcatchments
-from .project_setup import TuflowProjectConfig, initialize_tuflow_project
 from .terrain import compose_terrain
 
 
