@@ -245,9 +245,7 @@ def test_nested_aois_share_cumulative_cells_without_double_counting_local_area()
         [box(5.2, 5.2, 5.8, 5.8), box(5.2, 1.2, 5.8, 1.8)],
         transform=from_origin(0, 11, 1, 1),
     )
-    assert sum(item.local_area_m2 for item in result.subcatchments) == pytest.approx(
-        np.count_nonzero(contributing)
-    )
+    assert sum(item.local_area_m2 for item in result.subcatchments) == pytest.approx(np.count_nonzero(contributing))
     assert result.full_contributing_cell_count == 8
     assert result.subcatchments[0].cumulative_area_m2 == pytest.approx(8.0)
 
