@@ -51,6 +51,17 @@ class StreamsQA(TypedDict):
     negative_slope_reaches: list[ReachQA]
 
 
+class SubcatchmentsQA(TypedDict):
+    """Hydrology GeoPackage local-area and reach-link integrity."""
+
+    features: int
+    channel_subcatchments: int
+    direct_aoi_subcatchments: int
+    total_local_area_m2: float
+    total_polygon_area_m2: float
+    negative_channel_slopes: int
+
+
 class ProjectQA(TypedDict):
     """Reopened GIS and terrain evidence for a fixed EXG/RF01 project."""
 
@@ -58,6 +69,7 @@ class ProjectQA(TypedDict):
     contributing_area_km2: float
     analysis_grid: GridQA
     streams: StreamsQA
+    subcatchments: SubcatchmentsQA
 
 
 def _require(message: str, *, condition: bool) -> None:
@@ -98,6 +110,71 @@ def verify_streams(project: Path) -> StreamsQA:
             negative_slopes=len(negative),
             negative_slope_reaches=negative,
         )
+
+
+def verify_subcatchments(project: Path, contributing: BaseGeometry) -> SubcatchmentsQA:
+    """Reopen subcatchment GIS and verify conservation and downstream IDs."""
+    path = project / "model/gis/hydrology.gpkg"
+    with fiona.open(path, layer="subcatchments") as source:
+        rows = list(source)
+        _require("Subcatchments layer is empty", condition=bool(rows))
+        _require("Invalid subcatchment GIS CRS", condition=source.crs.to_epsg() == 28350)
+
+    by_id: dict[int, fiona.model.Feature] = {}
+    geometries: list[BaseGeometry] = []
+    local_area = 0.0
+    channels = 0
+    direct = 0
+    negative = 0
+    for feature in rows:
+        geom = feature_geometry(feature)
+        _require("Invalid subcatchment geometry", condition=geom.is_valid and geom.area > 0)
+        identifier = _number(feature, "subcatchment_id")
+        _require("Invalid subcatchment ID", condition=identifier.is_integer() and identifier > 0)
+        number = int(identifier)
+        _require("Duplicate subcatchment ID", condition=number not in by_id)
+        by_id[number] = feature
+        area = _number(feature, "local_area_m2")
+        _require("Subcatchment GIS area mismatch", condition=math.isclose(area, geom.area, abs_tol=0.01))
+        geometries.append(geom)
+        local_area += area
+        kind = feature.properties["type"]
+        channels += kind == "channel_reach"
+        direct += kind == "aoi_direct"
+        slope = feature.properties["stream_slope_ea"]
+        if isinstance(slope, (int, float)) and slope < 0:
+            negative += 1
+
+    _require("Unknown subcatchment classification", condition=channels + direct == len(rows))
+    full = unary_union(geometries)
+    _require(
+        "Local subcatchments overlap",
+        condition=math.isclose(full.area, local_area, rel_tol=1e-9, abs_tol=0.01),
+    )
+    for feature in rows:
+        downstream = feature.properties["downstream_id"]
+        if downstream is not None:
+            _require(
+                "Subcatchment points to missing downstream ID",
+                condition=isinstance(downstream, int) and downstream in by_id,
+            )
+
+    layers = fiona.listlayers(path)
+    if "exclusions_applied" not in layers:
+        _require("Local subcatchments do not cover full contributing area", condition=full.equals(contributing))
+    else:
+        _require(
+            "Excluded subcatchment output exceeds full contributing area",
+            condition=contributing.covers(full),
+        )
+    return SubcatchmentsQA(
+        features=len(rows),
+        channel_subcatchments=channels,
+        direct_aoi_subcatchments=direct,
+        total_local_area_m2=local_area,
+        total_polygon_area_m2=full.area,
+        negative_channel_slopes=negative,
+    )
 
 
 def verify_project(project: Path) -> ProjectQA:
@@ -148,4 +225,5 @@ def verify_project(project: Path) -> ProjectQA:
         contributing_area_km2=contributing.area / 1e6,
         analysis_grid=grid,
         streams=verify_streams(project),
+        subcatchments=verify_subcatchments(project, contributing),
     )
