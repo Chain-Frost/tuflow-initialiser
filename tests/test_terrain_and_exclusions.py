@@ -11,8 +11,8 @@ import rasterio
 from rasterio.crs import CRS
 from rasterio.transform import from_origin
 from shapely.geometry import Polygon, box
-from shapely.ops import unary_union
 from shapely.geometry.base import BaseGeometry
+from shapely.ops import unary_union
 
 from tuflow_initialiser.geometry import Domain, detailed_analysis_cells, make_domain
 from tuflow_initialiser.terrain import compose_terrain
