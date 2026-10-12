@@ -62,7 +62,7 @@ tuflow-initialiser build `
 
 **Exclusions:** the full upstream catchment is preserved in analysis outputs, but exclusions are removed from `2d_code` and identically from `2d_rf`. Detailed stream/headwater analysis of these excluded areas is **off by default**, since existing catchment information may already be available. Add `--analyse-exclusions` when detailed analysis is required. GRASS terrain processing and D8 connectivity still run over the entire analysis DEM to establish contributing drainage accurately. Inflow replacement and outlet BC design are **not** generated: excluded catchments may require manual boundary treatment before simulation.
 
-**AOI inflow catchments:** The build now writes `model/gis/inflow_catchments.gpkg` and `terrain/hydrology/aoi_inflows.json`, including per-entry inferred longest D8 flow paths. These are not yet stream-reach subcatchments. See [scope and limitations](docs/aoi-entry-catchments.md).
+**Catchment outputs:** The build writes `model/gis/inflow_catchments.gpkg` (per-entry inferred longest D8 flow paths), `model/gis/hydrology.gpkg` (`subcatchments` local stream-reach partitions and downstream topology), and corresponding audit JSON in `terrain/hydrology/`. See [definitions and limitations](docs/aoi-entry-catchments.md) and the [Windows integration checklist](docs/windows-verification-handoff.md).
 
 **Development status:** Draft PR, not production validated. The tool requires Windows GRASS/TUFLOW live testing and engineering review. No runtime dependency on `ryan-tools`; copying extra `ryan-tools` project utilities remains optional.
 
