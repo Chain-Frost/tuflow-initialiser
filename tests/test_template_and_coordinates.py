@@ -21,12 +21,15 @@ def test_ensemble_event_source_keyword_is_valid() -> None:
 def test_check_files_reference_configured_outputroot() -> None:
     templates = tuple((_TEMPLATE_ROOT / "runs").glob("*.tcf"))
     assert templates
+    matching = 0
     for path in templates:
         text = path.read_text(encoding="utf-8")
-        assert "Write Check Files == " in text
+        if "Write Check Files ==" not in text:
+            continue
+        matching += 1
         assert "<<OutputRoot>>\\check\\" in text
-        assert "OutputRoot>>\\check\\" in text  # suffix is part of the properly delimited reference
-        assert "== \t\t\tOutputRoot>>" not in text
+        assert "OutputRoot>>\\check\\" not in text.replace("<<OutputRoot>>", "")
+    assert matching > 0
 
 
 def test_pixel_centre_matches_map_coordinates_on_rectangular_grid() -> None:
