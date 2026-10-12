@@ -17,6 +17,7 @@ from shapely.ops import unary_union
 
 from .catchment_outputs import write_inflow_products, write_inflow_summary
 from .catchments import delineate_inflows
+from .coordinates import pixel_centre
 from .d8 import headwater_extensions, stream_mask
 from .geometry import Domain, check_dem, detailed_analysis_cells, make_domain, read_aoi, read_aoi_features
 from .gis_types import LayerSchema
@@ -64,7 +65,7 @@ def _consistent_grids(dem: rasterio.io.DatasetReader, other: rasterio.io.Dataset
 
 
 def _line(path: list[tuple[int, int]], transform: rasterio.Affine) -> LineString:
-    return LineString([transform * (col + 0.5, row + 0.5) for row, col in path])
+    return LineString([pixel_centre(transform, row, col) for row, col in path])
 
 
 def _write_streams(
