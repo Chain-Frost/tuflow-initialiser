@@ -233,9 +233,7 @@ def delineate_inflows(
             if analyse_cells is not None and not bool(np.all(analyse_cells[cells])):
                 status = "excluded_from_detailed_analysis"
             else:
-                route, length, slope = _longest_path(
-                    inlet, outlet, pointers, distances, elevations, transform
-                )
+                route, length, slope = _longest_path(inlet, outlet, pointers, distances, elevations, transform)
             result.append(
                 InflowCatchment(
                     aoi_id=aoi_id,
