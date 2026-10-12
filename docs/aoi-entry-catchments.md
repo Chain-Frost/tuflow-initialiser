@@ -1,4 +1,4 @@
-# AOI-entry catchment outputs (in progress)
+# AOI entry and stream-reach subcatchment outputs
 
 The project builder preserves each input AOI feature as a deterministic 1-based
 `aoi_id` in its original GeoPackage feature order, while still unioning AOIs
@@ -42,17 +42,31 @@ for hydrological audit but has `excluded_from_detailed_analysis` status and
   sheet-flow entries may need to be grouped into a hydrologically meaningful
   drainage system. Do not mistake the number of entries for the number of
   independent watercourses.
-- The current entry polygons are **not per-stream-reach subcatchments**.
-  Downstream reach topology, complete local/per-reach area partitioning,
-  terrain-derived mean reach-catchment slopes and consistent downstream
-  subcatchment IDs remain necessary under issue #3.
+- AOI-entry polygons are **not themselves per-stream-reach subcatchments**.
+  The separate `hydrology.gpkg/subcatchments` layer now partitions the
+  detailed contributing cells by the first downstream threshold stream
+  reach, with direct AOI runoff as a residual. Its `reach_id` matches the
+  existing channel-path ordering in `streams.gpkg`; singleton stream cells
+  have a separate zero-length reach with null equal-area slope.
+- `subcatchments` records disjoint local (analysed) and full local area,
+  downstream subcatchment/reach IDs, D8 cumulative upstream area at the
+  reach's final owned cell, mean DEM slope magnitude (dimensionless),
+  DEM minimum/maximum/mean and signed equal-area **reach** slope.
+  D8 cumulative areas **overlap by design** and are not additive. Direct
+  AOI runoff may represent multiple drainage outlets and therefore has
+  no single cumulative outlet-area or downstream-reach identifier.
+- When exclusions are present, detailed polygons omit excluded raster
+  cells but `full_local_area_m2` and cumulative D8 routing retain the
+  complete baseline. `partial_exclusion` flags areas with omitted
+  detailed cells. `terrain/hydrology/subcatchments.json` records the
+  analysed/excluded/full cell counts for area-conservation QA.
 - D8 paths derived from DEM cells are **inferred**, not surveyed streams.
   Negative signed slopes are retained as QA, not clamped to zero.
-- The AOI-entry and LFP results are covered by synthetic tests only so far.
-  Validate against the tracked SRTM/two-AOI fixture on real Windows GRASS/
-  TUFLOW, then inspect and compare representative multiple-inflow and nested-
-  AOI examples. Preserve the original 805 path baseline unless an intentional
-  engineering change is approved.
+- AOI-entry, longest-flow-path and stream-reach outputs have passed
+  synthetic unit tests but still require **real Windows GRASS/TUFLOW**
+  verification. Follow [the handoff](windows-verification-handoff.md).
+  Preserve the existing 805 path baseline unless an intentional engineering
+  change is independently reviewed.
 - Complex vertical datum/terrain seams and excluded upstream flow interfaces
   require independent modeller review. This initialiser does not generate
   a `2d_bc` or replacement hydrograph.
