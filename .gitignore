@@ -83,4 +83,4 @@ Desktop.ini
 # Deliberately DO NOT ignore *.tif, *.gpkg, *.prj, *.tcf, *.tgc,
 # *.tbc or *.trd globally: small test fixtures, projections and
 # maintained TUFLOW templates must remain versionable.
-validation/
+validation/ 

@@ -107,6 +107,11 @@ def test_reach_local_subcatchments_conserve_area_and_have_downstream_links(tmp_p
         assert len(output) == len(result.subcatchments)
         assert output.crs.to_epsg() == 28350
         attrs = [feature.properties for feature in output]
+        for item, attributes in zip(result.subcatchments, attrs, strict=True):
+            if item.outlet is not None:
+                row, col = item.outlet
+                assert attributes["outlet_x"] == pytest.approx(col + 0.5)
+                assert attributes["outlet_y"] == pytest.approx(11 - row - 0.5)
         areas = [item["local_area_m2"] for item in attrs]
         assert all(isinstance(area, (float, int)) for area in areas)
         assert sum(float(area) for area in areas if isinstance(area, (float, int))) == pytest.approx(

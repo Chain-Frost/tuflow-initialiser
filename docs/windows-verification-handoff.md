@@ -6,6 +6,41 @@ not install GRASS or execute a populated TUFLOW model**.
 
 ## 1. Baseline repeat on the tracked SRTM/two-AOI fixture
 
+### Completed local run: 12 October 2026
+
+The baseline was rerun from commit `35d98bb` with the local fixes described below,
+using GRASS 8.5 and TUFLOW 2026.3. Fixture hashes passed. Build and reopened-output
+QA completed in 11.24 seconds. Retained local evidence:
+
+- `validation/windows-handoff-2026-10-12-fixed/project/qa.json`
+- `validation/windows-handoff-2026-10-12-fixed/comparison.json`
+- `validation/windows-handoff-2026-10-12-fixed.log`
+- The generated project's `terrain/hydrology/subcatchments.json` and
+  `terrain/hydrology/aoi_inflows.json`.
+
+The first attempt exposed unsupported `Affine @ (x, y)` calls in both new GIS
+writers. These now use the supported `Affine * (x, y)` operation; the incorrect
+`__matmul__` declaration was removed from the local stub. Writer tests now check
+persisted outlet coordinates and whole-path geometry against expected map
+coordinates, in addition to the existing coverage/attribute checks.
+
+| Check | Result |
+| --- | --- |
+| Grid, contributing area, active area | Match the established baseline below |
+| Five hydrology rasters | Exact grid/CRS/pixel equality with 11 October artifacts |
+| Original stream paths | All 805 IDs, attributes, geometries and signed slopes exactly match |
+| Subcatchments | 535: 533 channel-local and 2 direct-AOI residuals |
+| Subcatchment local area | 102,444,147.109181 m²; coverage/non-overlap/topology QA passed |
+| AOI inflows and longest paths | 111 entry catchments and 111 paths across 2 AOIs; QA passed |
+| Signed negative slopes | 11 retained channel paths; 0 negative whole longest paths |
+| Local quality checks | 48 tests passed; Ruff lint/format and strict Pyright passed |
+
+This completes automated baseline verification of the new products. Visual
+engineering review and the representative checks in section 2 remain pending.
+TUFLOW generated canonical empties; no populated-model check or hydraulic
+simulation was run. Generated artifacts stay ignored. No commit/push or issue
+update was performed for this run.
+
 On a Windows machine with Python 3.14, GRASS 8.5 and TUFLOW 2026.3 installed,
 from the repository root after installing the dependencies in the README:
 

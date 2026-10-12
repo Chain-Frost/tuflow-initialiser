@@ -8,11 +8,12 @@ import pytest
 from numpy.typing import NDArray
 from rasterio.crs import CRS
 from rasterio.transform import from_origin
-from shapely.geometry import box
+from shapely.geometry import LineString, box
 from shapely.geometry.base import BaseGeometry
 
 from tuflow_initialiser.catchment_outputs import write_inflow_products, write_inflow_summary
 from tuflow_initialiser.catchments import delineate_inflows
+from tuflow_initialiser.gis_writer import feature_geometry
 
 
 def _base() -> tuple[NDArray[np.int16], NDArray[np.float64]]:
@@ -53,6 +54,9 @@ def test_two_inflows_to_one_aoi_are_not_combined(tmp_path: Path) -> None:
         records = list(lines)
         assert len(records) == 2
         assert all(feature.properties["origin"] == "inferred_D8" for feature in records)
+        for record, column in zip(records, (2, 7), strict=True):
+            expected = LineString([(column + 0.5, northing) for northing in (8.5, 7.5, 6.5, 5.5, 4.5)])
+            assert feature_geometry(record).equals_exact(expected, 0)
     summary = tmp_path / "summary.json"
     write_inflow_summary(summary, catchments)
     assert '"cumulative_areas_may_overlap_between_aois": true' in summary.read_text(encoding="utf-8")
