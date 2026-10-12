@@ -8,6 +8,7 @@ AOI drainage without a threshold stream is retained as an explicit residual.
 import math
 from collections import deque
 from dataclasses import dataclass
+from itertools import pairwise
 
 import numpy as np
 import rasterio
@@ -138,9 +139,10 @@ def _stream_reach_owners(
         if owners[terminal]:
             continue
         following = next_cell(directions, *terminal)
-        if following is None or not stream[following]:
-            if sum(bool(stream[c]) for c in incoming(directions, *terminal)) == 1:
-                owners[terminal] = reach_id
+        if (following is None or not stream[following]) and sum(
+            bool(stream[c]) for c in incoming(directions, *terminal)
+        ) == 1:
+            owners[terminal] = reach_id
 
     # A confluence with no downstream reach, or a one-cell stream, needs an
     # explicit singleton to conserve area without inventing a line segment.
@@ -172,9 +174,7 @@ def _assign_owners(
         ).astype(bool)
         owner[seeds & contributing & (owner == 0)] = reach_count + aoi_id
 
-    queue: deque[Cell] = deque(
-        (int(row), int(col)) for row, col in zip(*np.nonzero(owner > 0), strict=True)
-    )
+    queue: deque[Cell] = deque((int(row), int(col)) for row, col in zip(*np.nonzero(owner > 0), strict=True))
     while queue:
         cell = queue.popleft()
         for upstream in incoming(directions, *cell):
@@ -195,7 +195,7 @@ def _path_profile(
         return 0.0, None
     downstream_first = tuple(reversed(path))
     cumulative = [0.0]
-    for left, right in zip(downstream_first, downstream_first[1:], strict=False):
+    for left, right in pairwise(downstream_first):
         cumulative.append(
             cumulative[-1] + math.hypot((left[1] - right[1]) * transform.a, (left[0] - right[0]) * transform.e)
         )
@@ -204,6 +204,157 @@ def _path_profile(
         msg = "Nonfinite DEM on channel reach profile"
         raise ValueError(msg)
     return cumulative[-1], equal_area_slope(np.asarray(cumulative, dtype=np.float64), heights)
+
+
+def _verify_inputs(
+    directions: NDArray[np.integer],
+    accumulation: NDArray[np.floating],
+    contributing: NDArray[np.bool_],
+    detailed: NDArray[np.bool_],
+    stream: NDArray[np.bool_],
+    terrain: NDArray[np.floating],
+    aois: list[BaseGeometry],
+    transform: rasterio.Affine,
+) -> None:
+    """Reject incompatible D8 rasters or invalid subcatchment coverage."""
+    if not aois or any(
+        array.shape != directions.shape for array in (accumulation, contributing, detailed, stream, terrain)
+    ):
+        msg = "Subcatchment rasters must match and at least one AOI is required"
+        raise ValueError(msg)
+    if directions.ndim != 2 or not np.all(np.isfinite(accumulation[contributing])):
+        msg = "Invalid D8 or upstream accumulation for subcatchments"
+        raise ValueError(msg)
+    if np.any(detailed & ~contributing) or np.any(stream & ~detailed):
+        msg = "Stream and detailed masks must be within full contributing area"
+        raise ValueError(msg)
+    if transform.b != 0 or transform.d != 0 or transform.a <= 0 or transform.e >= 0:
+        msg = "Subcatchments require a north-up, metre-based D8 grid"
+        raise ValueError(msg)
+
+
+def _reach_attributes(
+    path: tuple[Cell, ...],
+    reach_id: int,
+    owners: NDArray[np.int32],
+    cumulative: NDArray[np.int64],
+    directions: NDArray[np.integer],
+    terrain: NDArray[np.floating],
+    transform: rasterio.Affine,
+    cell_area: float,
+) -> tuple[Cell, int | None, float, float | None, float | None]:
+    """Resolve a reach's upstream area at its final owned cell and its successor."""
+    if not path:
+        msg = "Channel reach has no D8 cells"
+        raise ValueError(msg)
+    owned_path = [cell for cell in path if owners[cell] == reach_id]
+    if not owned_path:
+        msg = "Channel reach has no uniquely attributed D8 cells"
+        raise ValueError(msg)
+    outlet = owned_path[-1]
+    upstream_area = float(cumulative[outlet]) * cell_area
+    terminal = path[-1]
+    downstream: int | None = None
+    if owners[terminal] != reach_id:
+        downstream = int(owners[terminal])
+    else:
+        following = next_cell(directions, *terminal)
+        if following is not None and owners[following] not in (0, reach_id):
+            downstream = int(owners[following])
+    length, slope = _path_profile(path, terrain, transform)
+    return outlet, downstream, upstream_area, length, slope
+
+
+def _make_record(
+    subcatchment_id: int,
+    *,
+    full_cells: NDArray[np.bool_],
+    detailed_cells: NDArray[np.bool_],
+    polygon: BaseGeometry,
+    number: int,
+    reach_count: int,
+    paths: list[tuple[Cell, ...]],
+    owners: NDArray[np.int32],
+    cumulative: NDArray[np.int64],
+    directions: NDArray[np.integer],
+    terrain: NDArray[np.floating],
+    slope_grid: NDArray[np.float64],
+    transform: rasterio.Affine,
+    cell_area: float,
+) -> ReachSubcatchment:
+    """Build one local basin's tested attributes and reach connectivity."""
+    values = np.asarray(terrain[detailed_cells], dtype=np.float64)
+    gradients = slope_grid[detailed_cells]
+    if not np.all(np.isfinite(values)) or not np.all(np.isfinite(gradients)):
+        msg = "Detailed subcatchment has invalid DEM elevation or slope"
+        raise ValueError(msg)
+    reach_id = subcatchment_id if subcatchment_id <= reach_count else None
+    aoi_id = subcatchment_id - reach_count if reach_id is None else None
+    path: tuple[Cell, ...] = paths[reach_id - 1] if reach_id is not None else ()
+    downstream: int | None = None
+    outlet: Cell | None = None
+    upstream_area: float | None = None
+    length: float | None = None
+    slope: float | None = None
+    if reach_id is not None:
+        outlet, downstream, upstream_area, length, slope = _reach_attributes(
+            path, reach_id, owners, cumulative, directions, terrain, transform, cell_area
+        )
+    full_count = int(np.count_nonzero(full_cells))
+    if full_count != number:
+        status = "partial_exclusion"
+    elif reach_id is None:
+        status = "aoi_direct_without_threshold_stream"
+    elif length == 0:
+        status = "singleton_stream_cell"
+    else:
+        status = "complete"
+    return ReachSubcatchment(
+        subcatchment_id=subcatchment_id,
+        kind="channel_reach" if reach_id is not None else "aoi_direct",
+        reach_id=reach_id,
+        aoi_id=aoi_id,
+        downstream_subcatchment_id=downstream,
+        downstream_reach_id=downstream if downstream is not None and downstream <= reach_count else None,
+        outlet=outlet,
+        polygon=polygon,
+        local_area_m2=number * cell_area,
+        full_local_area_m2=full_count * cell_area,
+        cumulative_area_m2=upstream_area,
+        min_elevation_m=float(np.min(values)),
+        max_elevation_m=float(np.max(values)),
+        mean_elevation_m=float(np.mean(values)),
+        mean_terrain_slope=float(np.mean(gradients)),
+        stream_length_m=length,
+        stream_slope_ea=slope,
+        profile_status=status,
+        reach_cells=path,
+    )
+
+
+def _validate_downstream_links(items: list[ReachSubcatchment], reach_count: int) -> None:
+    """Fail on cycles, self references or silently missing channel receivers."""
+    lookup = {item.subcatchment_id: item for item in items}
+    for item in items:
+        target = item.downstream_subcatchment_id
+        if target is not None and target == item.subcatchment_id:
+            msg = "Reach drains to itself"
+            raise ValueError(msg)
+        if target is not None and target not in lookup and target <= reach_count:
+            msg = "Detailed channel reach has missing downstream topology"
+            raise ValueError(msg)
+    for item in items:
+        visited: set[int] = set()
+        current = item
+        while current.downstream_subcatchment_id is not None:
+            if current.subcatchment_id in visited:
+                msg = "Cycle in downstream subcatchment links"
+                raise ValueError(msg)
+            visited.add(current.subcatchment_id)
+            next_item = lookup.get(current.downstream_subcatchment_id)
+            if next_item is None:
+                break
+            current = next_item
 
 
 def delineate_reach_subcatchments(
@@ -217,31 +368,15 @@ def delineate_reach_subcatchments(
     *,
     transform: rasterio.Affine,
 ) -> SubcatchmentResult:
-    """Partition contributing cells into per-channel and direct-AOI local areas.
+    """Partition D8 contributing cells into disjoint channel and direct-AOI basins.
 
-    Excluded cells remain in the full attribution/cumulative hydrology, but
-    never appear in the detailed polygons or detailed elevation statistics.
-    For partial catchments, the reported full area is for audit only.
+    Exclusions remain in the full catchment's routing graph and cumulative
+    areas, but detailed GIS polygons and terrain statistics exclude them.
     """
-    if not aois or any(array.shape != directions.shape for array in (accumulation, contributing, detailed, stream, terrain)):
-        msg = "Subcatchment rasters must match and at least one AOI is required"
-        raise ValueError(msg)
-    if directions.ndim != 2 or not np.all(np.isfinite(accumulation[contributing])):
-        msg = "Invalid D8 or upstream accumulation for subcatchments"
-        raise ValueError(msg)
-    if np.any(detailed & ~contributing) or np.any(stream & ~detailed):
-        msg = "Stream and detailed masks must be within full contributing area"
-        raise ValueError(msg)
-    if transform.b != 0 or transform.d != 0 or transform.a <= 0 or transform.e >= 0:
-        msg = "Subcatchments require a north-up, metre-based D8 grid"
-        raise ValueError(msg)
-
+    _verify_inputs(directions, accumulation, contributing, detailed, stream, terrain, aois, transform)
     stream_owners, paths = _stream_reach_owners(directions, stream)
     reach_count = len(paths)
     owners = _assign_owners(directions, contributing, stream_owners, aois, transform, reach_count)
-    if np.any(owners[contributing] <= 0):
-        msg = "No subcatchment owner for contributing cell"
-        raise ValueError(msg)
     cumulative = _upstream_sizes(directions, contributing)
     slope_grid = _terrain_slope(terrain, transform)
     labels = np.where(detailed, owners, 0).astype(np.int32)
@@ -261,104 +396,37 @@ def delineate_reach_subcatchments(
             msg = "Missing subcatchment polygon for D8-labelled raster cells"
             raise ValueError(msg)
         polygon = unary_union(polygons[subcatchment_id])
-        if polygon.is_empty or not polygon.is_valid or not math.isclose(
-            polygon.area, number * cell_area, rel_tol=1e-8, abs_tol=1e-6
+        if (
+            polygon.is_empty
+            or not polygon.is_valid
+            or not math.isclose(polygon.area, number * cell_area, rel_tol=1e-8, abs_tol=1e-6)
         ):
             msg = "Invalid subcatchment polygon or raster area loss"
             raise ValueError(msg)
-        values = np.asarray(terrain[detailed_cells], dtype=np.float64)
-        gradients = slope_grid[detailed_cells]
-        if not np.all(np.isfinite(values)) or not np.all(np.isfinite(gradients)):
-            msg = "Detailed subcatchment has invalid DEM elevation or slope"
-            raise ValueError(msg)
-        reach_id = subcatchment_id if subcatchment_id <= reach_count else None
-        aoi_id = subcatchment_id - reach_count if reach_id is None else None
-        path = paths[reach_id - 1] if reach_id is not None else ()
-        downstream: int | None = None
-        outlet: Cell | None = None
-        accumulated: float | None = None
-        length: float | None = None
-        equal_slope: float | None = None
-        if reach_id is not None:
-            # Shared confluence terminal is owned by the downstream reach.
-            owned_path = [cell for cell in path if owners[cell] == subcatchment_id]
-            outlet = owned_path[-1]
-            accumulated = float(cumulative[outlet]) * cell_area
-            terminal = path[-1]
-            if owners[terminal] != subcatchment_id:
-                downstream = int(owners[terminal])
-            else:
-                nxt = next_cell(directions, *terminal)
-                if nxt is not None and owners[nxt] not in (0, subcatchment_id):
-                    downstream = int(owners[nxt])
-            length, equal_slope = _path_profile(path, terrain, transform)
-        full_count = int(np.count_nonzero(full_cells))
-        partial = full_count != number
-        if partial:
-            # Channel reach itself may still be valid but the associated local
-            # terrain statistics describe only included drainage cells.
-            status = "partial_exclusion"
-        elif reach_id is None:
-            status = "aoi_direct_without_threshold_stream"
-        elif length == 0:
-            status = "singleton_stream_cell"
-        else:
-            status = "complete"
         outputs.append(
-            ReachSubcatchment(
-                subcatchment_id=subcatchment_id,
-                kind="channel_reach" if reach_id is not None else "aoi_direct",
-                reach_id=reach_id,
-                aoi_id=aoi_id,
-                downstream_subcatchment_id=downstream,
-                downstream_reach_id=downstream if downstream is not None and downstream <= reach_count else None,
-                outlet=outlet,
+            _make_record(
+                subcatchment_id,
+                full_cells=full_cells,
+                detailed_cells=detailed_cells,
                 polygon=polygon,
-                local_area_m2=number * cell_area,
-                full_local_area_m2=full_count * cell_area,
-                cumulative_area_m2=accumulated,
-                min_elevation_m=float(np.min(values)),
-                max_elevation_m=float(np.max(values)),
-                mean_elevation_m=float(np.mean(values)),
-                mean_terrain_slope=float(np.mean(gradients)),
-                stream_length_m=length,
-                stream_slope_ea=equal_slope,
-                profile_status=status,
-                reach_cells=path,
+                number=number,
+                reach_count=reach_count,
+                paths=paths,
+                owners=owners,
+                cumulative=cumulative,
+                directions=directions,
+                terrain=terrain,
+                slope_grid=slope_grid,
+                transform=transform,
+                cell_area=cell_area,
             )
         )
         assigned += number
     total_detailed = int(np.count_nonzero(detailed))
-    if assigned != total_detailed or len({s.subcatchment_id for s in outputs}) != len(outputs):
+    if assigned != total_detailed or len({item.subcatchment_id for item in outputs}) != len(outputs):
         msg = "Subcatchment local areas are not disjoint or do not cover detailed AOI contribution"
         raise ValueError(msg)
-    lookup = {item.subcatchment_id: item for item in outputs}
-    for item in outputs:
-        if item.downstream_subcatchment_id is None:
-            continue
-        if item.downstream_subcatchment_id == item.subcatchment_id:
-            msg = "Reach drains to itself"
-            raise ValueError(msg)
-        if item.downstream_subcatchment_id not in lookup:
-            # A downstream reach can be inside an excluded analysis area.
-            # In that case retain an unresolved link to the full network
-            # rather than silently asserting it was analysed.
-            if item.downstream_subcatchment_id <= reach_count:
-                msg = "Detailed channel reach has missing downstream topology"
-                raise ValueError(msg)
-    for item in outputs:
-        visited: set[int] = set()
-        current = item
-        while current.downstream_subcatchment_id is not None:
-            if current.subcatchment_id in visited:
-                msg = "Cycle in downstream subcatchment links"
-                raise ValueError(msg)
-            visited.add(current.subcatchment_id)
-            next_item = lookup.get(current.downstream_subcatchment_id)
-            if next_item is None:
-                break
-            current = next_item
-
+    _validate_downstream_links(outputs, reach_count)
     return SubcatchmentResult(
         subcatchments=outputs,
         analysed_cell_count=total_detailed,
