@@ -29,8 +29,8 @@ class Domain:
     excluded_area: BaseGeometry | None = None
 
 
-def read_aoi(path: Path, *, expected_crs: rasterio.crs.CRS) -> BaseGeometry:
-    """Read polygon AOI without implicit coordinate transformation."""
+def read_aoi_features(path: Path, *, expected_crs: rasterio.crs.CRS) -> list[BaseGeometry]:
+    """Read ordered AOI features without silently merging drainage identities."""
     with fiona.open(path) as src:
         if not src.crs_wkt or rasterio.crs.CRS.from_wkt(src.crs_wkt) != expected_crs:
             msg = "AOI CRS must match the DEM CRS; reproject explicitly"
@@ -48,7 +48,12 @@ def read_aoi(path: Path, *, expected_crs: rasterio.crs.CRS) -> BaseGeometry:
     if not polygons:
         msg = "AOI has no polygon features"
         raise ValueError(msg)
-    result = unary_union(polygons)
+    return polygons
+
+
+def read_aoi(path: Path, *, expected_crs: rasterio.crs.CRS) -> BaseGeometry:
+    """Read the union for the TUFLOW footprint; retain identities separately."""
+    result = unary_union(read_aoi_features(path, expected_crs=expected_crs))
     if not result.is_valid or result.is_empty:
         msg = "Invalid AOI union"
         raise ValueError(msg)
