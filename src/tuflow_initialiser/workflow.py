@@ -191,10 +191,20 @@ def build(config: BuildConfig) -> Path:
             ):
                 for ds in (direction_ds, acc_ds, hydro_ds):
                     _consistent_grids(terrain, ds)
+                # Keep a separate NoData validity mask: filled direction 0 is
+                # a legitimate GRASS sink and must never stand in for unknown
+                # flow direction or unsupported contributing topography.
+                valid_cells = (
+                    (direction_ds.read_masks(1) > 0)
+                    & (acc_ds.read_masks(1) > 0)
+                    & (hydro_ds.read_masks(1) > 0)
+                    & (terrain.read_masks(1) > 0)
+                )
                 directions = direction_ds.read(1, masked=True).filled(0).astype(np.int16)
                 accum = acc_ds.read(1, masked=True).filled(0).astype(np.float64)
                 conditioned = hydro_ds.read(1, masked=True).filled(np.nan).astype(np.float64)
                 original = terrain.read(1, masked=True).filled(np.nan).astype(np.float64)
+                valid_cells &= np.isfinite(conditioned) & np.isfinite(original) & np.isfinite(accum)
                 domain: Domain = make_domain(
                     directions,
                     aoi=aoi,
@@ -202,6 +212,7 @@ def build(config: BuildConfig) -> Path:
                     raster_bounds=terrain.bounds,
                     buffer_m=config.buffer_m,
                     exclusions=exclusions,
+                    valid_cells=valid_cells,
                 )
                 # No missing source/conditioned terrain anywhere used in the
                 # computed model domain (not just within the AOI).
