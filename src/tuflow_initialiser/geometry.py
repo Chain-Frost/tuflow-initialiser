@@ -101,6 +101,7 @@ def make_domain(
     raster_bounds: tuple[float, float, float, float],
     buffer_m: float = 500.0,
     exclusions: BaseGeometry | None = None,
+    valid_cells: NDArray[np.bool_] | None = None,
 ) -> Domain:
     """Delineate all AOI contributing cells and union with circular AOI buffer."""
     if buffer_m <= 0 or not np.isfinite(buffer_m):
@@ -110,7 +111,7 @@ def make_domain(
         msg = "AOI must lie entirely inside DEM"
         raise ValueError(msg)
     seed = rasterize([(aoi, 1)], out_shape=directions.shape, transform=transform, fill=0, all_touched=True).astype(bool)
-    upstream = contributing_cells(directions, seed)
+    upstream = contributing_cells(directions, seed, valid_cells=valid_cells)
     contributing = mask_to_polygon(upstream, transform)
     expanded = aoi.buffer(buffer_m)
     if not box(*raster_bounds).covers(expanded):
