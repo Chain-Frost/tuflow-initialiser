@@ -12,6 +12,30 @@ For the shared real-DEM inputs, reproduction command and retained results, see
 - Stage the project and publish only after validations pass; do not overwrite an existing project.
 - Warn in output if upstream catchments were excluded: resulting model may be hydraulically incomplete until external inflows / upstream interfaces are resolved by engineering design.
 
-## Real-system checks required before merge
+## Completed reference check and future project-specific verification
 
-Run end-to-end tests on Windows with installed GRASS and current TUFLOW, confirm canonical empty GPKG fields, source-order terrain precedence, raster reprojection, vertical data consistency and stream/catchment delineation. Large regional performance remains unverified. Unit tests alone are insufficient to approve engineering output.
+The installed Windows GRASS 8.5/TUFLOW 2026.3 reference build has reproduced
+the original 805 stream paths and five rasters, and verified the 535 local
+subcatchments and 111 per-entry longest paths by machine-readable QA. TUFLOW
+was used to generate canonical empty GIS templates, **not** to simulate a
+hydraulic model.
+
+The following representative engineering checks are explicitly deferred to
+separate tracked issues rather than treated as completed PR #1 acceptance:
+
+- [#8](https://github.com/Chain-Frost/tuflow-initialiser/issues/8): inspect
+  drainage systems, 535 reach-local catchments, 111 AOI entry crossings and
+  DEM/D8 longest paths on QGIS maps with supporting source terrain.
+- [#9](https://github.com/Chain-Frost/tuflow-initialiser/issues/9): real
+  co-located LiDAR/SRTM overlap, source priority, NoData seams and vertical
+  datum/units reconciliation.
+- [#10](https://github.com/Chain-Frost/tuflow-initialiser/issues/10): realistic
+  excluded contributing areas, preserved full catchment coverage and manual
+  treatment of missing upstream hydraulic inflows.
+
+Fail-closed D8 NoData boundaries, valid TUFLOW event/control syntax and
+automated input/output tests **remain immediate code-quality and data-safety
+requirements**; do not postpone known defects to the future validation issues.
+All generated hydrology products still require project-specific engineering
+review before hydraulic or planning decisions. Large regional performance
+remains unverified.
