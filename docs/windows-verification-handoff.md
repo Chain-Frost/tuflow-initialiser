@@ -1,5 +1,7 @@
 # Windows GRASS/TUFLOW verification handoff — PR #1
 
+**Tracked future engineering verification:** [#8 — QGIS catchment and LFP review](https://github.com/Chain-Frost/tuflow-initialiser/issues/8), [#9 — representative LiDAR/SRTM and vertical datum verification](https://github.com/Chain-Frost/tuflow-initialiser/issues/9), and [#10 — realistic upstream exclusions](https://github.com/Chain-Frost/tuflow-initialiser/issues/10). The reference Windows baseline below is complete; these additional representative-data checks are intentionally out of scope for the initial PR. Template and D8 integrity defects remain code merge blockers, not deferred checks.
+
 **Status:** Mandatory engineering verification; not performed on hosted GitHub
 Actions. Windows Python 3.14 CI covers unit tests, linting and typing but **does
 not install GRASS or execute a populated TUFLOW model**.
