@@ -13,7 +13,7 @@ from shapely.geometry import box
 from shapely.ops import unary_union
 
 from tuflow_initialiser.d8 import contributing_cells
-from tuflow_initialiser.subcatchment_outputs import write_reach_subcatchments, write_reach_subcatchment_summary
+from tuflow_initialiser.subcatchment_outputs import write_reach_subcatchment_summary, write_reach_subcatchments
 from tuflow_initialiser.subcatchments import SubcatchmentResult, delineate_reach_subcatchments
 
 
@@ -79,11 +79,7 @@ def test_reach_local_subcatchments_conserve_area_and_have_downstream_links(tmp_p
     )
     polygons = [item.polygon for item in result.subcatchments]
     assert unary_union(polygons).area == pytest.approx(float(np.count_nonzero(contributing)))
-    assert all(
-        left.intersection(right).area == 0
-        for i, left in enumerate(polygons)
-        for right in polygons[i + 1 :]
-    )
+    assert all(left.intersection(right).area == 0 for i, left in enumerate(polygons) for right in polygons[i + 1 :])
     reaches = [item for item in result.subcatchments if item.kind == "channel_reach"]
     assert len(reaches) == 3
     assert [r.reach_id for r in reaches] == [1, 2, 3]
@@ -91,12 +87,16 @@ def test_reach_local_subcatchments_conserve_area_and_have_downstream_links(tmp_p
     assert reaches[1].downstream_reach_id == 3
     assert reaches[2].downstream_subcatchment_id is None
     assert reaches[2].cumulative_area_m2 == pytest.approx(float(np.count_nonzero(contributing)))
+    assert reaches[2].cumulative_area_m2 is not None
     assert reaches[2].cumulative_area_m2 > reaches[2].local_area_m2
     assert all(item.mean_terrain_slope == pytest.approx(1) for item in reaches)
     assert all(item.stream_length_m is not None and item.stream_length_m > 0 for item in reaches)
     gpkg = tmp_path / "hydrology.gpkg"
     with fiona.open(
-        gpkg, "w", driver="GPKG", layer="original_hydrology",
+        gpkg,
+        "w",
+        driver="GPKG",
+        layer="original_hydrology",
         schema={"geometry": "Polygon", "properties": {"id": "int"}},
         crs_wkt=CRS.from_epsg(28350).to_wkt(),
     ):
@@ -107,7 +107,9 @@ def test_reach_local_subcatchments_conserve_area_and_have_downstream_links(tmp_p
         assert len(output) == len(result.subcatchments)
         assert output.crs.to_epsg() == 28350
         attrs = [feature.properties for feature in output]
-        assert sum(float(item["local_area_m2"]) for item in attrs) == pytest.approx(
+        areas = [item["local_area_m2"] for item in attrs]
+        assert all(isinstance(area, (float, int)) for area in areas)
+        assert sum(float(area) for area in areas if isinstance(area, (float, int))) == pytest.approx(
             float(np.count_nonzero(contributing))
         )
     report = tmp_path / "subcatchments.json"
@@ -131,9 +133,7 @@ def test_disabled_exclusion_omits_only_detailed_area_without_losing_baseline() -
     result, contributing = _run(excluded=(3, 3))
     assert result.excluded_cell_count == 1
     assert result.analysed_cell_count + result.excluded_cell_count == int(np.count_nonzero(contributing))
-    assert sum(x.local_area_m2 for x in result.subcatchments) == pytest.approx(
-        float(result.analysed_cell_count)
-    )
+    assert sum(x.local_area_m2 for x in result.subcatchments) == pytest.approx(float(result.analysed_cell_count))
     assert sum(x.full_local_area_m2 for x in result.subcatchments) == pytest.approx(
         float(np.count_nonzero(contributing))
     )
@@ -144,15 +144,20 @@ def test_non_square_raster_cell_areas_and_mean_slopes() -> None:
     d8, elevations, aoi, stream = _network()
     contributing = contributing_cells(d8, aoi, require_complete=False)
     result = delineate_reach_subcatchments(
-        d8, np.ones(d8.shape, dtype=float), contributing, contributing, stream, elevations,
-        [box(10.2, 6.2, 11.8, 8.8)], transform=from_origin(0, 33, 2, 3)
+        d8,
+        np.ones(d8.shape, dtype=float),
+        contributing,
+        contributing,
+        stream,
+        elevations,
+        [box(10.2, 6.2, 11.8, 8.8)],
+        transform=from_origin(0, 33, 2, 3),
     )
-    assert sum(x.local_area_m2 for x in result.subcatchments) == pytest.approx(
-        np.count_nonzero(contributing) * 6
-    )
+    assert sum(x.local_area_m2 for x in result.subcatchments) == pytest.approx(np.count_nonzero(contributing) * 6)
     assert all(
         math.isfinite(x.mean_terrain_slope) and x.mean_terrain_slope >= 0
-        for x in result.subcatchments if x.mean_terrain_slope is not None
+        for x in result.subcatchments
+        if x.mean_terrain_slope is not None
     )
 
 
@@ -162,15 +167,19 @@ def test_no_gaps_when_stream_contains_a_single_cell() -> None:
     isolated = np.zeros(d8.shape, dtype=bool)
     isolated[6, 5] = True
     result = delineate_reach_subcatchments(
-        d8, np.ones(d8.shape, dtype=float), contributing, contributing, isolated, elevations,
-        [box(5.15, 2.15, 5.85, 2.85)], transform=from_origin(0, 11, 1, 1)
+        d8,
+        np.ones(d8.shape, dtype=float),
+        contributing,
+        contributing,
+        isolated,
+        elevations,
+        [box(5.15, 2.15, 5.85, 2.85)],
+        transform=from_origin(0, 11, 1, 1),
     )
     assert result.channel_reach_count == 1
     assert result.subcatchments[0].stream_length_m == 0
     assert result.subcatchments[0].stream_slope_ea is None
-    assert sum(x.local_area_m2 for x in result.subcatchments) == pytest.approx(
-        float(np.count_nonzero(contributing))
-    )
+    assert sum(x.local_area_m2 for x in result.subcatchments) == pytest.approx(float(np.count_nonzero(contributing)))
 
 
 def test_failure_on_missing_channel_analysis_cells() -> None:
@@ -180,6 +189,12 @@ def test_failure_on_missing_channel_analysis_cells() -> None:
     detailed[5, 5] = False
     with pytest.raises(ValueError, match="Stream and detailed masks"):
         delineate_reach_subcatchments(
-            d8, np.ones(d8.shape), contributing, detailed, stream, elevations,
-            [box(5.15, 2.15, 5.85, 2.85)], transform=from_origin(0, 11, 1, 1)
+            d8,
+            np.ones(d8.shape),
+            contributing,
+            detailed,
+            stream,
+            elevations,
+            [box(5.15, 2.15, 5.85, 2.85)],
+            transform=from_origin(0, 11, 1, 1),
         )
