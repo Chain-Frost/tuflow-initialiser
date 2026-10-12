@@ -24,6 +24,8 @@ from .gis_writer import write_analysis, write_tuflow_layers
 from .grass_runner import process_terrain
 from .model_terrain import set_model_terrain
 from .profiles import equal_area_slope, stream_reaches
+from .subcatchment_outputs import write_reach_subcatchment_summary, write_reach_subcatchments
+from .subcatchments import delineate_reach_subcatchments
 from .project_setup import TuflowProjectConfig, initialize_tuflow_project
 from .terrain import compose_terrain
 
@@ -259,6 +261,33 @@ def build(config: BuildConfig) -> Path:
                     analyse_exclusions=config.analyse_exclusions,
                     domain=domain,
                 )
+                # The new reach-local polygons are separated from the existing
+                # stream/headwater vectors to retain their historical IDs.
+                detailed = detailed_analysis_cells(
+                    domain, transform=terrain.transform, analyse_exclusions=config.analyse_exclusions
+                )
+                channel_mask = (
+                    stream_mask(
+                        accum,
+                        cell_area_m2=abs(terrain.transform.a * terrain.transform.e),
+                        min_area_m2=config.stream_threshold_m2,
+                    )
+                    & domain.contributing_cells
+                    & detailed
+                )
+                reach_result = delineate_reach_subcatchments(
+                    directions,
+                    accum,
+                    domain.contributing_cells,
+                    detailed,
+                    channel_mask,
+                    original,
+                    aois,
+                    transform=terrain.transform,
+                )
+                write_reach_subcatchments(
+                    analysis, reach_result, crs_wkt=terrain_crs.to_wkt(), transform=terrain.transform
+                )
                 # Preserve the pre-existing streams.gpkg regression baseline.
                 # Additional AOI-entry catchments and LFPs are separate QA layers.
                 inflows = delineate_inflows(
@@ -280,6 +309,7 @@ def build(config: BuildConfig) -> Path:
                 target_analysis = stage_project / "terrain" / "hydrology"
                 target_analysis.mkdir(parents=True)
                 write_inflow_summary(target_analysis / "aoi_inflows.json", inflows)
+                write_reach_subcatchment_summary(target_analysis / "subcatchments.json", reach_result)
                 for file in (
                     grass.flow_direction,
                     grass.accumulation,
