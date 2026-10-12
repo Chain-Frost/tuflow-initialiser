@@ -64,3 +64,43 @@ def test_equal_area_slope_linear_profile() -> None:
 def test_equal_area_slope_rejects_unordered() -> None:
     with pytest.raises(ValueError, match="increase"):
         equal_area_slope(np.array([0, 10, 5.0]), np.array([0, 1, 2.0]))
+
+
+def test_unknown_d8_neighbour_fails_instead_of_becoming_a_sink() -> None:
+    dirs = np.zeros((7, 7), dtype=np.int16)
+    dirs[2:4, 3] = 6
+    aoi = np.zeros_like(dirs, dtype=bool)
+    aoi[4, 3] = True
+    valid = np.ones(dirs.shape, dtype=bool)
+    valid[2, 2] = False  # Unknown neighbour could discharge into the upstream route.
+    with pytest.raises(ValueError, match="NoData/unknown D8 terrain"):
+        contributing_cells(dirs, aoi, valid_cells=valid, require_complete=False)
+
+
+def test_nodata_inside_aoi_fails_before_delineation() -> None:
+    dirs = np.zeros((5, 5), dtype=np.int16)
+    aoi = np.zeros_like(dirs, dtype=bool)
+    aoi[2, 2] = True
+    valid = np.ones_like(aoi)
+    valid[2, 2] = False
+    with pytest.raises(ValueError, match="AOI intersects NoData"):
+        contributing_cells(dirs, aoi, valid_cells=valid, require_complete=False)
+
+
+def test_valid_d8_sink_and_distant_nodata_remain_supported() -> None:
+    dirs = np.zeros((7, 7), dtype=np.int16)
+    dirs[2:4, 3] = 6
+    aoi = np.zeros_like(dirs, dtype=bool)
+    aoi[4, 3] = True
+    valid = np.ones_like(aoi)
+    valid[0, 0] = False
+    result = contributing_cells(dirs, aoi, valid_cells=valid, require_complete=False)
+    assert set(zip(*np.nonzero(result), strict=True)) == {(2, 3), (3, 3), (4, 3)}
+
+
+def test_invalid_d8_validity_mask_shape_fails() -> None:
+    dirs = np.zeros((5, 5), dtype=np.int16)
+    aoi = np.zeros_like(dirs, dtype=bool)
+    aoi[2, 2] = True
+    with pytest.raises(ValueError, match="validity mask"):
+        contributing_cells(dirs, aoi, valid_cells=np.ones((4, 4), dtype=bool), require_complete=False)
