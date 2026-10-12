@@ -103,7 +103,7 @@ def write_inflow_products(
         for item in inflows:
             if not item.path or item.length_m is None or item.slope_ea is None:
                 continue
-            geometry = LineString([transform * (col + 0.5, row + 0.5) for row, col in item.path])
+            geometry = LineString([transform @ (col + 0.5, row + 0.5) for row, col in item.path])
             if abs(geometry.length - item.length_m) > 1e-6:
                 msg = "GIS LFP length differs from computed D8 length"
                 raise ValueError(msg)
