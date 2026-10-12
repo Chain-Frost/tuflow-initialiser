@@ -7,7 +7,6 @@ from rasterio.transform import from_origin
 
 from tuflow_initialiser.coordinates import pixel_centre
 
-
 _TEMPLATE_ROOT = Path(__file__).resolve().parents[1] / "src" / "tuflow_initialiser" / "resources" / "tuflow_templates"
 
 
