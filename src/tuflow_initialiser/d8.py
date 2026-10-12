@@ -51,9 +51,7 @@ def _check_valid_cells(
         raise ValueError(msg)
 
 
-def _check_unknown_upstream_boundary(
-    visited: NDArray[np.bool_], valid_cells: NDArray[np.bool_] | None
-) -> None:
+def _check_unknown_upstream_boundary(visited: NDArray[np.bool_], valid_cells: NDArray[np.bool_] | None) -> None:
     """Fail where a NoData pixel could be an omitted upstream contributor."""
     if valid_cells is None:
         return
