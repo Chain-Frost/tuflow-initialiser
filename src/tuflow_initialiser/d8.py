@@ -65,6 +65,7 @@ def contributing_cells(
     aoi: NDArray[np.bool_],
     *,
     require_complete: bool = True,
+    valid_cells: NDArray[np.bool_] | None = None,
 ) -> NDArray[np.bool_]:
     """Delineate all cells draining into ANY AOI cell, not a single outlet.
 
@@ -72,6 +73,13 @@ def contributing_cells(
     algorithm scales linearly with contributing cell count.
     """
     _check(directions, aoi)
+    if valid_cells is not None:
+        if valid_cells.shape != directions.shape:
+            msg = "D8 validity mask must match the direction grid"
+            raise ValueError(msg)
+        if np.any(aoi & ~valid_cells):
+            msg = "AOI intersects NoData/unknown flow directions"
+            raise ValueError(msg)
     visited = aoi.copy()
     queue: deque[tuple[int, int]] = deque((int(r), int(c)) for r, c in zip(*np.nonzero(aoi), strict=True))
     while queue:
@@ -80,6 +88,18 @@ def contributing_cells(
             if not visited[ur, uc]:
                 visited[ur, uc] = True
                 queue.append((ur, uc))
+
+    if valid_cells is not None:
+        # Unknown neighbours may discharge into selected cells. Their D8
+        # directions cannot be read as sinks: fail closed instead of silently
+        # truncating the delineated contributing catchment.
+        for row, col in zip(*np.nonzero(visited), strict=True):
+            for dr, dc in OFFSETS.values():
+                nr, nc = int(row) + dr, int(col) + dc
+                if 0 <= nr < directions.shape[0] and 0 <= nc < directions.shape[1]:
+                    if not valid_cells[nr, nc]:
+                        msg = "Contributing catchment borders NoData/unknown D8 terrain; supply complete DEM"
+                        raise ValueError(msg)
 
     # A directed cycle cannot represent terrain that drains to the AOI.
     # Detect any such cycle within the complete selected drainage subgraph.
