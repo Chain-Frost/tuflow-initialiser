@@ -1,0 +1,40 @@
+name: Python tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Install binary GIS wheels from Ryan Tools wheel index
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install --upgrade --extra-index-url https://gisidx.github.io/gwi --only-binary=:all: fiona rasterio gdal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install --prefer-binary --extra-index-url https://gisidx.github.io/gwi --only-binary=fiona --only-binary=rasterio --only-binary=gdal -e ".[dev]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Unit tests
+        run: python -m pytest -q
+      - name: Python compilation
+        run: python -m compileall -q src tests
+      - name: CLI help
+        run: tuflow-initialiser --help
+
+      - name: Ruff lint (ryan-culverts rules)
+        if: ${{ !cancelled() }}
+        run: python -m ruff check .
+      - name: Ruff formatting
+        if: ${{ !cancelled() }}
+        run: python -m ruff format --check .
+      - name: Pyright strict typing
+        if: ${{ !cancelled() }}
+        run: python -m pyright

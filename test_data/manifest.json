@@ -1,0 +1,7 @@
+{
+  "crs": "EPSG:28350",
+  "sha256": {
+    "dem_epsg28350.tif": "f26d989bd510702e398c42abf8b0f130c276a3bff39fef5f3979eda2b3f3a92f",
+    "region.gpkg": "b186ebd8dc828d38dbf292d07b53b6fb824e80ecafba6913de9c1ee5d2eb965e"
+  }
+}

@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tuflow-initialiser"
+version = "0.1.0"
+description = "Standalone 2D rainfall-on-grid TUFLOW project initialiser"
+requires-python = ">=3.14"
+readme = "README.md"
+license = "LicenseRef-SUL-1.0"
+dependencies = ["numpy", "rasterio", "fiona", "shapely>=2", "loguru"]
+
+[project.optional-dependencies]
+dev = ["pytest>=9", "ruff==0.16.6", "pyright>=1.1.410", "types-shapely==2.1.0.20260728"]
+
+[project.scripts]
+tuflow-initialiser = "tuflow_initialiser.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+tuflow_initialiser = ["resources/*.qml", "resources/tuflow_templates/model/*", "resources/tuflow_templates/runs/*"]
+
+
+[tool.pyright]
+# Follow ryan-culverts: check package, tests and validation scripts strictly.
+include = ["src", "tests", "scripts", "typings"]
+extraPaths = ["src"]
+stubPath = "typings"
+pythonVersion = "3.14"
+typeCheckingMode = "strict"

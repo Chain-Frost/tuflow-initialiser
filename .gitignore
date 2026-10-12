@@ -1,0 +1,86 @@
+# Python bytecode, environments and tooling caches
+__pycache__/
+*.py[cod]
+*.pyc.*
+.venv/
+venv/
+env/
+.tox/
+.nox/
+.pytest_cache/
+.pytest_tmp/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.pyre/
+.pytype/
+.hypothesis/
+
+# Builds, installations and test/coverage reports
+/build/
+/dist/
+*.egg-info/
+*.egg/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+test-results/
+junit.xml
+
+# Local datasets and generated models (including downloaded SRTM / LiDAR)
+# Use these directories for unversioned inputs and integration-test outputs.
+/data/
+/datasets/
+/downloads/
+/local-data/
+/test-data-local/
+/tests/data/local/
+/tests/fixtures/local/
+/scratch/
+/tmp/
+/temp/
+/work/
+/output/
+/outputs/
+/generated/
+/local-projects/
+/generated-models/
+
+# GRASS GIS local sessions and temporary mapsets
+/grassdata/
+/grassdb/
+/grass_project/
+.grass*/
+.gislock
+
+# GDAL, QGIS and GeoPackage transient files/sidecars
+*.gpkg-wal
+*.gpkg-shm
+*.gpkg-journal
+*.aux.xml
+*.ovr
+*.msi
+*.qgz~
+*.qgs~
+*.qgd
+.qgis3/
+
+# Local execution logs and temporary editor/OS files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
+
+# Deliberately DO NOT ignore *.tif, *.gpkg, *.prj, *.tcf, *.tgc,
+# *.tbc or *.trd globally: small test fixtures, projections and
+# maintained TUFLOW templates must remain versionable.
+validation/ 
