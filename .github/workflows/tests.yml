@@ -34,7 +34,9 @@ jobs:
         run: python -m ruff check .
       - name: Ruff formatting
         if: ${{ !cancelled() }}
-        run: python -m ruff format --check .
+        run: |
+          python -m ruff format --diff .
+          python -m ruff format --check .
       - name: Pyright strict typing
         if: ${{ !cancelled() }}
         run: python -m pyright
