@@ -180,6 +180,7 @@ def delineate_inflows(
     *,
     transform: rasterio.Affine,
     analyse_cells: NDArray[np.bool_] | None = None,
+    valid_cells: NDArray[np.bool_] | None = None,
 ) -> list[InflowCatchment]:
     """Derive distinct AOI D8 crossings, exterior areas and each longest path.
 
@@ -194,6 +195,9 @@ def delineate_inflows(
     if analyse_cells is not None and analyse_cells.shape != directions.shape:
         msg = "Detailed-analysis mask must match D8 grid"
         raise ValueError(msg)
+    if valid_cells is not None and valid_cells.shape != directions.shape:
+        msg = "Validity mask must match D8 grid"
+        raise ValueError(msg)
     if not aois:
         msg = "At least one AOI geometry is required"
         raise ValueError(msg)
@@ -201,7 +205,7 @@ def delineate_inflows(
     result: list[InflowCatchment] = []
     for aoi_id, aoi in enumerate(aois, start=1):
         seed = rasterize([(aoi, 1)], out_shape=directions.shape, transform=transform, all_touched=True).astype(bool)
-        cumulative = contributing_cells(directions, seed)
+        cumulative = contributing_cells(directions, seed, valid_cells=valid_cells)
         owner, crossings = _partition(directions, seed, cumulative)
         if not crossings:
             continue

@@ -46,13 +46,13 @@ def process_terrain(
     work_dir.mkdir(parents=True, exist_ok=True)
     project = work_dir / "grass_project"
     grass = str(grass_executable)
-    _run([grass, "-c", str(dem.resolve()), "-e", str(project.resolve())], directory=work_dir)
+    _run([grass, "-c", str(dem.absolute()), "-e", str(project.absolute())], directory=work_dir)
     mapset = project / "PERMANENT"
 
     def run_grass(*args: str) -> None:
         _run([grass, str(mapset), "--exec", *args], directory=work_dir)
 
-    run_grass("r.in.gdal", f"input={dem.resolve()}", "output=raw_dem", "--overwrite")
+    run_grass("r.in.gdal", f"input={dem.absolute()}", "output=raw_dem", "--overwrite")
     run_grass("g.region", "raster=raw_dem")
     elevation_name = "raw_dem"
     if fill_depressions:

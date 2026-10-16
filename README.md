@@ -1,6 +1,6 @@
 # TUFLOW Initialiser
 
-Standalone Python/GRASS initialisation of **2D rainfall-on-grid (ROG)** TUFLOW projects.
+Standalone Python/GRASS catchment delineation and optional initialisation of **2D rainfall-on-grid (ROG)** TUFLOW projects.
 
 The `build` workflow takes ordered terrain rasters, AOI polygon(s) and optional upstream exclusion polygons. It delineates full D8 contributing areas, adds a configurable circular AOI buffer (default 500 m), extracts stream paths and their equal-area slopes, and produces `2d_code`, `2d_loc`, `2d_rf` from canonical TUFLOW empty layers.
 
@@ -58,11 +58,25 @@ tuflow-initialiser build `
   --output "D:\\models\\Example"
 ```
 
+Catchment generation is an explicit choice. `build` creates the TUFLOW project
+without catchment products unless `--catchments` is supplied. To create only
+per-entry upstream catchment polygons for a line or polygon interest feature,
+use the independent command below; it writes no TUFLOW files:
+
+```powershell
+tuflow-initialiser catchments `
+  --terrain "D:\\terrain\\dem.asc" `
+  --interest "D:\\gis\\road.gpkg" `
+  --crs EPSG:28351 `
+  --grass-exe "C:\\Program Files\\QGIS 4.0.1\\bin\\grass84.bat" `
+  --output "D:\\gis\\road_catchments.gpkg"
+```
+
 **Terrain priority:** first `--terrain` has highest priority and takes precedence wherever it contains valid elevations. Lower-priority sources fill its gaps. Hydrology uses a separately resampled analysis DEM; the TUFLOW geometry control file reads the original/source-resolution DEMs in reverse order so high-priority topography prevails.
 
 **Exclusions:** the full upstream catchment is preserved in analysis outputs, but exclusions are removed from `2d_code` and identically from `2d_rf`. Detailed stream/headwater analysis of these excluded areas is **off by default**, since existing catchment information may already be available. Add `--analyse-exclusions` when detailed analysis is required. GRASS terrain processing and D8 connectivity still run over the entire analysis DEM to establish contributing drainage accurately. Inflow replacement and outlet BC design are **not** generated: excluded catchments may require manual boundary treatment before simulation.
 
-**Catchment outputs:** The build writes `model/gis/inflow_catchments.gpkg` (per-entry inferred longest D8 flow paths), `model/gis/hydrology.gpkg` (`subcatchments` local stream-reach partitions and downstream topology), and corresponding audit JSON in `terrain/hydrology/`. See [definitions and limitations](docs/aoi-entry-catchments.md) and the [Windows integration checklist](docs/windows-verification-handoff.md).
+**Catchment outputs:** Add `--catchments` to `build` to write `model/gis/inflow_catchments.gpkg` (per-entry inferred longest D8 flow paths), `model/gis/hydrology.gpkg` (`subcatchments` local stream-reach partitions and downstream topology), and corresponding audit JSON in `terrain/hydrology/`. See [definitions and limitations](docs/aoi-entry-catchments.md) and the [Windows integration checklist](docs/windows-verification-handoff.md).
 
 **Development status:** The tracked two-AOI real Windows GRASS/TUFLOW reference build has passed (see [Windows baseline report](docs/windows-verification-handoff.md)), and unit tests, GIS checks, Ruff and strict typing run in hosted CI. This does **not** constitute a hydraulic simulation or physical engineering sign-off. Representative [QGIS catchment inspection (#8)](https://github.com/Chain-Frost/tuflow-initialiser/issues/8), [LiDAR/SRTM/vertical datum verification (#9)](https://github.com/Chain-Frost/tuflow-initialiser/issues/9) and [upstream exclusion validation (#10)](https://github.com/Chain-Frost/tuflow-initialiser/issues/10) are documented future follow-ups. No runtime dependency on `ryan-tools`; copying extra project utilities remains optional.
 

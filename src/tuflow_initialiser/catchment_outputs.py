@@ -152,3 +152,33 @@ def write_inflow_summary(path: Path, inflows: list[InflowCatchment]) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def write_catchment_polygons(path: Path, inflows: list[InflowCatchment], *, crs_wkt: str) -> None:
+    """Write only the requested per-entry upstream catchment polygons."""
+    schema: LayerSchema = {
+        "geometry": "MultiPolygon",
+        "properties": {
+            "interest_id": "int",
+            "catch_id": "int",
+            "area_m2": "float",
+            "z_min_m": "float",
+            "z_max_m": "float",
+            "z_mean_m": "float",
+        },
+    }
+    with fiona.open(path, "w", driver="GPKG", layer="catchments", crs_wkt=crs_wkt, schema=schema) as output:
+        for item in inflows:
+            output.write(
+                {
+                    "geometry": mapping(_multipolygon(item.polygon)),
+                    "properties": {
+                        "interest_id": item.aoi_id,
+                        "catch_id": item.catchment_id,
+                        "area_m2": item.local_area_m2,
+                        "z_min_m": item.min_elevation_m,
+                        "z_max_m": item.max_elevation_m,
+                        "z_mean_m": item.mean_elevation_m,
+                    },
+                }
+            )

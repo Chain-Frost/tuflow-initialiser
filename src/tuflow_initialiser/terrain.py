@@ -39,6 +39,7 @@ def compose_terrain(
     directory: Path,
     resolution_m: float | None = None,
     max_cells: int = 100_000_000,
+    assume_missing_crs: CRS | None = None,
 ) -> TerrainMosaic:
     """Build a priority mosaic from multiple resolutions and coordinate systems.
 
@@ -46,7 +47,7 @@ def compose_terrain(
     WarpedVRT delegates on-the-fly raster reprojection to GDAL. An explicit
     alpha band is critical for sources with no declared NoData value.
     """
-    paths = tuple(Path(item).resolve() for item in terrain_sources)
+    paths = tuple(Path(item).absolute() for item in terrain_sources)
     if not paths or len(paths) != len(set(paths)):
         msg = "Terrain sources must be nonempty and unique, in priority order"
         raise ValueError(msg)
@@ -71,10 +72,11 @@ def compose_terrain(
 
     with ExitStack() as stack:
         sources = [stack.enter_context(rasterio.open(path)) for path in paths]
-        bounds = [_validated_bounds(source, target_crs) for source in sources]
+        bounds = [_validated_bounds(source, target_crs, assume_missing_crs) for source in sources]
         if resolution_m is None:
             first = sources[0]
-            if first.crs is None or first.crs != target_crs or not first.crs.is_projected:
+            first_crs = first.crs or assume_missing_crs
+            if first_crs is None or first_crs != target_crs or not first_crs.is_projected:
                 msg = "Specify --analysis-resolution-m if top-priority DEM requires reprojection"
                 raise ValueError(msg)
             resolution_m = max(abs(first.res[0]), abs(first.res[1]))
@@ -96,6 +98,7 @@ def compose_terrain(
             stack.enter_context(
                 WarpedVRT(
                     src,
+                    src_crs=src.crs or assume_missing_crs,
                     crs=target_crs,
                     transform=transform,
                     width=width,
@@ -142,12 +145,17 @@ def compose_terrain(
     return TerrainMosaic(target, provenance, float(resolution_m))
 
 
-def _validated_bounds(source: rasterio.io.DatasetReader, target_crs: CRS) -> tuple[float, float, float, float]:
+def _validated_bounds(
+    source: rasterio.io.DatasetReader,
+    target_crs: CRS,
+    assume_missing_crs: CRS | None = None,
+) -> tuple[float, float, float, float]:
     """Validate source geometry and transform its extent into the target CRS."""
-    if source.count != 1 or source.crs is None:
-        msg = f"Terrain must be single-band with CRS: {source.name}"
+    source_crs = source.crs or assume_missing_crs
+    if source.count != 1 or source_crs is None:
+        msg = f"Terrain must be single-band with CRS (or an explicit CRS override): {source.name}"
         raise ValueError(msg)
     if source.transform.b or source.transform.d:
         msg = f"Rotated terrain is unsupported: {source.name}"
         raise ValueError(msg)
-    return transform_bounds(source.crs, target_crs, *source.bounds, densify_pts=21)
+    return transform_bounds(source_crs, target_crs, *source.bounds, densify_pts=21)

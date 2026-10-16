@@ -53,6 +53,7 @@ class BuildConfig:
     fill_depressions: bool = False
     max_fill_depth_m: float = 2.0
     utility_source_root: Path | None = None
+    generate_catchments: bool = False
 
 
 def _consistent_grids(dem: rasterio.io.DatasetReader, other: rasterio.io.DatasetReader) -> None:
@@ -240,7 +241,7 @@ def build(config: BuildConfig) -> Path:
                         scenario_name=config.scenario,
                         prj_file=config.prj,
                         tuflow_executable=config.tuflow_executable,
-                        templates_dir=Path(__file__).resolve().parent / "resources" / "tuflow_templates",
+                        templates_dir=Path(__file__).absolute().parent / "resources" / "tuflow_templates",
                         copy_utilities=config.utility_source_root is not None,
                         utility_source_root=config.utility_source_root,
                     )
@@ -273,55 +274,53 @@ def build(config: BuildConfig) -> Path:
                     analyse_exclusions=config.analyse_exclusions,
                     domain=domain,
                 )
-                # The new reach-local polygons are separated from the existing
-                # stream/headwater vectors to retain their historical IDs.
-                detailed = detailed_analysis_cells(
-                    domain, transform=terrain.transform, analyse_exclusions=config.analyse_exclusions
-                )
-                channel_mask = (
-                    stream_mask(
-                        accum,
-                        cell_area_m2=abs(terrain.transform.a * terrain.transform.e),
-                        min_area_m2=config.stream_threshold_m2,
-                    )
-                    & domain.contributing_cells
-                    & detailed
-                )
-                reach_result = delineate_reach_subcatchments(
-                    directions,
-                    accum,
-                    domain.contributing_cells,
-                    detailed,
-                    channel_mask,
-                    original,
-                    aois,
-                    transform=terrain.transform,
-                )
-                write_reach_subcatchments(
-                    analysis, reach_result, crs_wkt=terrain_crs.to_wkt(), transform=terrain.transform
-                )
-                # Preserve the pre-existing streams.gpkg regression baseline.
-                # Additional AOI-entry catchments and LFPs are separate QA layers.
-                inflows = delineate_inflows(
-                    directions,
-                    original,
-                    aois,
-                    transform=terrain.transform,
-                    analyse_cells=detailed_analysis_cells(
-                        domain, transform=terrain.transform, analyse_exclusions=config.analyse_exclusions
-                    ),
-                )
-                write_inflow_products(
-                    stage_project / "model" / "gis" / "inflow_catchments.gpkg",
-                    aois=aois,
-                    inflows=inflows,
-                    transform=terrain.transform,
-                    crs_wkt=terrain_crs.to_wkt(),
-                )
                 target_analysis = stage_project / "terrain" / "hydrology"
                 target_analysis.mkdir(parents=True)
-                write_inflow_summary(target_analysis / "aoi_inflows.json", inflows)
-                write_reach_subcatchment_summary(target_analysis / "subcatchments.json", reach_result)
+                if config.generate_catchments:
+                    # Catchment products are opt-in and independent from the
+                    # TUFLOW geometry/control files.
+                    detailed = detailed_analysis_cells(
+                        domain, transform=terrain.transform, analyse_exclusions=config.analyse_exclusions
+                    )
+                    channel_mask = (
+                        stream_mask(
+                            accum,
+                            cell_area_m2=abs(terrain.transform.a * terrain.transform.e),
+                            min_area_m2=config.stream_threshold_m2,
+                        )
+                        & domain.contributing_cells
+                        & detailed
+                    )
+                    reach_result = delineate_reach_subcatchments(
+                        directions,
+                        accum,
+                        domain.contributing_cells,
+                        detailed,
+                        channel_mask,
+                        original,
+                        aois,
+                        transform=terrain.transform,
+                    )
+                    write_reach_subcatchments(
+                        analysis, reach_result, crs_wkt=terrain_crs.to_wkt(), transform=terrain.transform
+                    )
+                    inflows = delineate_inflows(
+                        directions,
+                        original,
+                        aois,
+                        transform=terrain.transform,
+                        analyse_cells=detailed,
+                        valid_cells=valid_cells,
+                    )
+                    write_inflow_products(
+                        stage_project / "model" / "gis" / "inflow_catchments.gpkg",
+                        aois=aois,
+                        inflows=inflows,
+                        transform=terrain.transform,
+                        crs_wkt=terrain_crs.to_wkt(),
+                    )
+                    write_inflow_summary(target_analysis / "aoi_inflows.json", inflows)
+                    write_reach_subcatchment_summary(target_analysis / "subcatchments.json", reach_result)
                 for file in (
                     grass.flow_direction,
                     grass.accumulation,
@@ -342,7 +341,7 @@ def build(config: BuildConfig) -> Path:
                                 else "single_source_not_applicable"
                             ),
                             "sources": [
-                                {"priority": index, "path": str(path.resolve())}
+                                {"priority": index, "path": str(path.absolute())}
                                 for index, path in enumerate(config.terrains, start=1)
                             ],
                         },

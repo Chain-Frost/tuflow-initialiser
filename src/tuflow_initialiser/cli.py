@@ -3,6 +3,9 @@
 import argparse
 from pathlib import Path
 
+from rasterio.crs import CRS
+
+from .catchment_workflow import CatchmentConfig, build_catchments
 from .project_setup import TuflowProjectConfig, initialize_tuflow_project
 from .workflow import BuildConfig, build
 
@@ -60,6 +63,22 @@ def _parser() -> argparse.ArgumentParser:
     make.add_argument("--fill-depressions", action="store_true")
     make.add_argument("--max-fill-depth-m", type=float, default=2)
     make.add_argument("--ryan-tools-scripts", type=Path, default=None)
+    make.add_argument(
+        "--catchments",
+        action="store_true",
+        help="Also generate optional inflow and stream-reach catchment products",
+    )
+
+    catchments = commands.add_parser(
+        "catchments", help="Generate catchment polygons only; no TUFLOW project files"
+    )
+    catchments.add_argument("--terrain", required=True, type=Path, action="append")
+    catchments.add_argument("--interest", required=True, type=Path, help="Line or polygon vector in the DEM CRS")
+    catchments.add_argument("--output", required=True, type=Path, help="New catchment GeoPackage")
+    catchments.add_argument("--crs", required=True, help="Analysis CRS, for example EPSG:28351")
+    catchments.add_argument("--analysis-resolution-m", type=float, default=None)
+    catchments.add_argument("--grass-exe", default="grass")
+    catchments.add_argument("--fill-depressions", action="store_true")
     return parser
 
 
@@ -74,7 +93,7 @@ def main() -> int:
                 scenario_name=args.scenario,
                 prj_file=args.prj,
                 tuflow_executable=args.tuflow_exe,
-                templates_dir=Path(__file__).resolve().parent / "resources" / "tuflow_templates",
+                templates_dir=Path(__file__).absolute().parent / "resources" / "tuflow_templates",
                 copy_utilities=args.ryan_tools_scripts is not None,
                 utility_source_root=args.ryan_tools_scripts,
                 overwrite=args.overwrite,
@@ -100,6 +119,19 @@ def main() -> int:
                 fill_depressions=args.fill_depressions,
                 max_fill_depth_m=args.max_fill_depth_m,
                 utility_source_root=args.ryan_tools_scripts,
+                generate_catchments=args.catchments,
+            )
+        )
+    elif args.command == "catchments":
+        build_catchments(
+            CatchmentConfig(
+                terrains=tuple(args.terrain),
+                interest=args.interest,
+                output=args.output,
+                target_crs=CRS.from_string(args.crs),
+                analysis_resolution_m=args.analysis_resolution_m,
+                grass_executable=args.grass_exe,
+                fill_depressions=args.fill_depressions,
             )
         )
     else:

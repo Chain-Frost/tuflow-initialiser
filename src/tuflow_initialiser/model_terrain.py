@@ -37,7 +37,7 @@ def set_model_terrain(
     commands: list[str] = []
 
     for rank, path in reversed(tuple(enumerate(sources, start=1))):
-        source = path.resolve()
+        source = path.absolute()
         with rasterio.open(source) as dem:
             if dem.count != 1 or dem.crs is None:
                 msg = f"Cannot use invalid source DEM in TUFLOW geometry: {source}"

@@ -9,6 +9,7 @@ class WarpedVRT(DatasetReader):
         self,
         src_dataset: DatasetReader,
         *,
+        src_crs: CRS | None = ...,
         crs: CRS,
         transform: Affine = ...,
         width: int = ...,
