@@ -88,7 +88,7 @@ def read_tgc_terrain_stack(
     low_to_high: list[TerrainLayer] = []
     commands: list[str] = []
     skipped: list[str] = []
-    inputs = cast(tuple[_TgcInput, ...], tuple(tgc.inputs))
+    inputs = tuple(cast(Iterable[_TgcInput], tgc.inputs))
     for item in inputs:
         lhs = str(getattr(item, "lhs", "")).strip().lower()
         if lhs not in {"read grid zpts", "read gis zpts"}:
@@ -99,7 +99,7 @@ def read_tgc_terrain_stack(
         if lhs == "read gis zpts":
             skipped.append(command)
             continue
-        files = [Path(str(value)).absolute() for value in cast(tuple[object, ...], tuple(item.files))]
+        files = [Path(str(value)).absolute() for value in cast(Iterable[object], item.files)]
         if not files:
             skipped.append(command)
             continue
