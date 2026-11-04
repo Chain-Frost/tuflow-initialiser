@@ -38,7 +38,9 @@ def _check(directions: NDArray[np.integer], seeds: NDArray[np.bool_]) -> None:
 
 
 def _check_valid_cells(
-    directions: NDArray[np.integer], aoi: NDArray[np.bool_], valid_cells: NDArray[np.bool_] | None
+    directions: NDArray[np.integer],
+    aoi: NDArray[np.bool_],
+    valid_cells: NDArray[np.bool_] | None,
 ) -> None:
     """Distinguish unknown D8 data from genuine flow sinks."""
     if valid_cells is None:
@@ -51,7 +53,9 @@ def _check_valid_cells(
         raise ValueError(msg)
 
 
-def _check_unknown_upstream_boundary(visited: NDArray[np.bool_], valid_cells: NDArray[np.bool_] | None) -> None:
+def _check_unknown_upstream_boundary(
+    visited: NDArray[np.bool_], valid_cells: NDArray[np.bool_] | None
+) -> None:
     """Fail where a NoData pixel could be an omitted upstream contributor."""
     if valid_cells is None:
         return
@@ -64,7 +68,9 @@ def _check_unknown_upstream_boundary(visited: NDArray[np.bool_], valid_cells: ND
                 raise ValueError(msg)
 
 
-def next_cell(directions: NDArray[np.integer], row: int, col: int) -> tuple[int, int] | None:
+def next_cell(
+    directions: NDArray[np.integer], row: int, col: int
+) -> tuple[int, int] | None:
     """Return downstream cell or None for sink/edge/outgoing direction."""
     direction = int(directions[row, col])
     if direction <= 0:
@@ -76,13 +82,19 @@ def next_cell(directions: NDArray[np.integer], row: int, col: int) -> tuple[int,
     return nr, nc
 
 
-def incoming(directions: NDArray[np.integer], row: int, col: int) -> list[tuple[int, int]]:
+def incoming(
+    directions: NDArray[np.integer], row: int, col: int
+) -> list[tuple[int, int]]:
     """Direct upstream neighbours of a D8 cell."""
     height, width = directions.shape
     result: list[tuple[int, int]] = []
     for direction, (dr, dc) in OFFSETS.items():
         ur, uc = row - dr, col - dc
-        if 0 <= ur < height and 0 <= uc < width and int(directions[ur, uc]) == direction:
+        if (
+            0 <= ur < height
+            and 0 <= uc < width
+            and int(directions[ur, uc]) == direction
+        ):
             result.append((ur, uc))
     return result
 
@@ -91,6 +103,7 @@ def contributing_cells(
     directions: NDArray[np.integer],
     aoi: NDArray[np.bool_],
     *,
+    allow_unknown_boundary: bool = False,
     require_complete: bool = True,
     valid_cells: NDArray[np.bool_] | None = None,
 ) -> NDArray[np.bool_]:
@@ -102,7 +115,9 @@ def contributing_cells(
     _check(directions, aoi)
     _check_valid_cells(directions, aoi, valid_cells)
     visited = aoi.copy()
-    queue: deque[tuple[int, int]] = deque((int(r), int(c)) for r, c in zip(*np.nonzero(aoi), strict=True))
+    queue: deque[tuple[int, int]] = deque(
+        (int(r), int(c)) for r, c in zip(*np.nonzero(aoi), strict=True)
+    )
     while queue:
         row, col = queue.popleft()
         for ur, uc in incoming(directions, row, col):
@@ -110,7 +125,8 @@ def contributing_cells(
                 visited[ur, uc] = True
                 queue.append((ur, uc))
 
-    _check_unknown_upstream_boundary(visited, valid_cells)
+    if not allow_unknown_boundary:
+        _check_unknown_upstream_boundary(visited, valid_cells)
 
     # A directed cycle cannot represent terrain that drains to the AOI.
     # Detect any such cycle within the complete selected drainage subgraph.
@@ -143,7 +159,9 @@ def contributing_cells(
     return visited
 
 
-def stream_mask(accumulation: NDArray[np.floating], *, cell_area_m2: float, min_area_m2: float) -> NDArray[np.bool_]:
+def stream_mask(
+    accumulation: NDArray[np.floating], *, cell_area_m2: float, min_area_m2: float
+) -> NDArray[np.bool_]:
     """Area-thresholded stream cells; unrelated to full AOI catchment extent."""
     if cell_area_m2 <= 0 or min_area_m2 <= 0:
         msg = "Cell area and stream threshold must be positive"

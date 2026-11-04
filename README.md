@@ -60,7 +60,8 @@ tuflow-initialiser build `
 
 Catchment generation is an explicit choice. `build` creates the TUFLOW project
 without catchment products unless `--catchments` is supplied. To create only
-per-entry upstream catchment polygons for a line or polygon interest feature,
+per-entry upstream catchment polygons for a line or polygon interest feature, or
+one upstream catchment per point outlet,
 use the independent command below; it writes no TUFLOW files:
 
 ```powershell
@@ -71,6 +72,30 @@ tuflow-initialiser catchments `
   --grass-exe "C:\\Program Files\\QGIS 4.0.1\\bin\\grass84.bat" `
   --output "D:\\gis\\road_catchments.gpkg"
 ```
+
+The same command can parse a TUFLOW geometry control file with PyTUFLOW. This
+example uses only globally scoped terrain, preserves sequential `Read Grid
+Zpts` precedence and polygon clips, snaps point outlets to nearby drainage
+cells, and deliberately retains catchments clipped by the requested bounds:
+
+```powershell
+tuflow-initialiser catchments `
+  --tgc "D:\\model\\GEOM_01.tgc" `
+  --tgc-global-only `
+  --interest "D:\\gis\\outlets.gpkg" `
+  --crs EPSG:28350 `
+  --analysis-resolution-m 10 `
+  --analysis-bounds 711938 7428573 766296 7461448 `
+  --snap-distance-m 100 `
+  --allow-partial `
+  --grass-exe "C:\\Program Files\\QGIS 4.0.1\\bin\\grass84.bat" `
+  --output "D:\\gis\\outlet_catchments.gpkg"
+```
+
+`Read GIS Zpts` is reported but not rasterised by this workflow. Partial point
+catchments carry a `status` value identifying analysis-boundary or NoData
+clipping; they are suitable for review and model-domain tidying, not a claim of
+complete hydrological delineation.
 
 **Terrain priority:** first `--terrain` has highest priority and takes precedence wherever it contains valid elevations. Lower-priority sources fill its gaps. Hydrology uses a separately resampled analysis DEM; the TUFLOW geometry control file reads the original/source-resolution DEMs in reverse order so high-priority topography prevails.
 
