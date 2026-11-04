@@ -17,9 +17,7 @@ class TgcTerrainStack:
     skipped_commands: tuple[str, ...]
 
 
-def _active(
-    scope_list: object, scenarios: tuple[str, ...], *, global_only: bool
-) -> bool:
+def _active(scope_list: object, scenarios: tuple[str, ...], *, global_only: bool) -> bool:
     """Return whether a PyTUFLOW scope is active for the requested scenarios."""
     scopes = tuple(scope_list)  # type: ignore[arg-type]
     if all(type(scope).__name__ == "GlobalScope" for scope in scopes):
@@ -73,22 +71,17 @@ def read_tgc_terrain_stack(
         if lhs == "read gis zpts":
             skipped.append(command)
             continue
-        files = tuple(Path(str(value)).absolute() for value in item.files)
+        files = [Path(str(value)).absolute() for value in item.files]
         if not files:
             skipped.append(command)
             continue
         if len(files) > 2:
-            msg = (
-                f"Unsupported Read Grid Zpts command with more than one clip: {command}"
-            )
+            msg = f"Unsupported Read Grid Zpts command with more than one clip: {command}"
             raise ValueError(msg)
-        low_to_high.append(
-            TerrainLayer(files[0], files[1] if len(files) == 2 else None)
-        )
+        first = files[0]
+        low_to_high.append(TerrainLayer(first, files[1] if len(files) == 2 else None))
         commands.append(command)
     if not low_to_high:
         msg = f"No active Read Grid Zpts commands found in {path}"
         raise ValueError(msg)
-    return TgcTerrainStack(
-        tuple(reversed(low_to_high)), tuple(reversed(commands)), tuple(skipped)
-    )
+    return TgcTerrainStack(tuple(reversed(low_to_high)), tuple(reversed(commands)), tuple(skipped))

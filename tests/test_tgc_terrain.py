@@ -92,7 +92,7 @@ def test_clipped_layer_and_explicit_bounds(tmp_path: Path) -> None:
     ):
         values = source.read(1)
         ranks = index.read(1)
-        assert source.bounds == rasterio.coords.BoundingBox(2, 2, 8, 8)
+        assert tuple(source.bounds) == (2, 2, 8, 8)
     assert np.count_nonzero(values == 2) == 4
     assert np.count_nonzero(ranks == 1) == 4
     assert np.all(values[ranks == 2] == 1)

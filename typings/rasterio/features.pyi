@@ -12,6 +12,7 @@ def rasterize(
     transform: Affine,
     all_touched: bool = ...,
     fill: int = ...,
+    dtype: str = ...,
 ) -> NDArray[np.integer]: ...
 def shapes(
     source: NDArray[np.integer], *, mask: NDArray[np.bool_] = ..., transform: Affine = ...

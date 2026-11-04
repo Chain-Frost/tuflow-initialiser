@@ -87,9 +87,7 @@ def _snapped_cell(
             x = transform.c + (candidate_col + 0.5) * transform.a
             y = transform.f + (candidate_row + 0.5) * transform.e
             distance = math.hypot(x - point.x, y - point.y)
-            if distance <= snap_distance_m or (
-                radius == 0 and candidate_row == row and candidate_col == col
-            ):
+            if distance <= snap_distance_m or (radius == 0 and candidate_row == row and candidate_col == col):
                 score = abs(float(accumulation[candidate_row, candidate_col]))
                 if math.isfinite(score):
                     candidates.append((-score, distance, candidate_row, candidate_col))
@@ -102,12 +100,7 @@ def _snapped_cell(
 
 def _partial_status(cells: NDArray[np.bool_], valid_cells: NDArray[np.bool_]) -> str:
     reasons: list[str] = []
-    if bool(
-        np.any(cells[0, :])
-        or np.any(cells[-1, :])
-        or np.any(cells[:, 0])
-        or np.any(cells[:, -1])
-    ):
+    if bool(np.any(cells[0, :]) or np.any(cells[-1, :]) or np.any(cells[:, 0]) or np.any(cells[:, -1])):
         reasons.append("analysis_edge")
     height, width = cells.shape
     for dr, dc in OFFSETS.values():
@@ -148,7 +141,7 @@ def delineate_outlet_catchments(
     for interest_id, geometry in enumerate(outlets, start=1):
         if not isinstance(geometry, Point):
             msg = "Outlet catchments require point interest geometries"
-            raise ValueError(msg)
+            raise TypeError(msg)
         outlet, snapped_distance = _snapped_cell(
             geometry,
             valid_cells,
@@ -174,9 +167,7 @@ def delineate_outlet_catchments(
         )
         parts = [
             shape(geometry)
-            for geometry, value in shapes(
-                subset.astype(np.uint8), mask=subset, transform=subset_transform
-            )
+            for geometry, value in shapes(subset.astype(np.uint8), mask=subset, transform=subset_transform)
             if value
         ]
         polygon = unary_union(parts)
@@ -191,11 +182,7 @@ def delineate_outlet_catchments(
                 interest_id=interest_id,
                 outlet=outlet,
                 polygon=polygon,
-                area_m2=(
-                    float(polygon.area)
-                    if clip_bounds is not None
-                    else int(np.count_nonzero(cells)) * cell_area
-                ),
+                area_m2=(float(polygon.area) if clip_bounds is not None else int(np.count_nonzero(cells)) * cell_area),
                 min_elevation_m=float(np.min(values)),
                 max_elevation_m=float(np.max(values)),
                 mean_elevation_m=float(np.mean(values)),
@@ -267,8 +254,7 @@ def _farthest_routes(
         if down is not None and owner[down] == owner[row, col]:
             indegree[down] += 1
     queue: deque[Cell] = deque(
-        (int(r), int(c))
-        for r, c in zip(*np.nonzero((owner > 0) & (indegree == 0)), strict=True)
+        (int(r), int(c)) for r, c in zip(*np.nonzero((owner > 0) & (indegree == 0)), strict=True)
     )
     best = np.zeros(directions.shape, dtype=np.float64)
     upstream_ptr = np.full(directions.shape, -1, dtype=np.int32)
@@ -318,22 +304,15 @@ def _longest_path(
             msg = "Invalid longest-path upstream pointers"
             raise ValueError(msg)
     route = (*reversed(reverse), outlet)
-    first = math.hypot(
-        (root[1] - outlet[1]) * transform.a, (root[0] - outlet[0]) * transform.e
-    )
+    first = math.hypot((root[1] - outlet[1]) * transform.a, (root[0] - outlet[0]) * transform.e)
     length = float(best[root]) + first
     downstream_first = tuple(reversed(route))
     distances = [0.0]
     for left, right in pairwise(downstream_first):
         distances.append(
-            distances[-1]
-            + math.hypot(
-                (left[1] - right[1]) * transform.a, (left[0] - right[0]) * transform.e
-            )
+            distances[-1] + math.hypot((left[1] - right[1]) * transform.a, (left[0] - right[0]) * transform.e)
         )
-    heights = np.asarray(
-        [float(elevations[cell]) for cell in downstream_first], dtype=np.float64
-    )
+    heights = np.asarray([float(elevations[cell]) for cell in downstream_first], dtype=np.float64)
     if not np.all(np.isfinite(heights)):
         msg = "Nonfinite DEM values on longest flow path"
         raise ValueError(msg)
@@ -399,9 +378,7 @@ def delineate_inflows(
                 msg = "Invalid AOI inlet subcatchment polygon"
                 raise ValueError(msg)
             cell_count = int(np.count_nonzero(cells))
-            if not math.isclose(
-                polygon.area, cell_count * area, rel_tol=1e-8, abs_tol=1e-6
-            ):
+            if not math.isclose(polygon.area, cell_count * area, rel_tol=1e-8, abs_tol=1e-6):
                 msg = "D8 inlet polygon does not conserve raster area"
                 raise ValueError(msg)
             values = np.asarray(elevations[cells], dtype=np.float64)
@@ -415,9 +392,7 @@ def delineate_inflows(
             if analyse_cells is not None and not bool(np.all(analyse_cells[cells])):
                 status = "excluded_from_detailed_analysis"
             else:
-                route, length, slope = _longest_path(
-                    inlet, outlet, pointers, distances, elevations, transform
-                )
+                route, length, slope = _longest_path(inlet, outlet, pointers, distances, elevations, transform)
             result.append(
                 InflowCatchment(
                     aoi_id=aoi_id,

@@ -46,7 +46,7 @@ def _quoted_identifier(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
-def _fiona_features(path: Path) -> tuple[CRS, list[BaseGeometry]]:
+def read_interest_features(path: Path) -> tuple[CRS, list[BaseGeometry]]:
     """Read point/line/polygon features, including stale-count GeoPackages."""
     with fiona.open(path) as source:
         if not source.crs_wkt:
@@ -59,17 +59,11 @@ def _fiona_features(path: Path) -> tuple[CRS, list[BaseGeometry]]:
             # then reports zero and skips iteration although keyed features exist.
             with sqlite3.connect(path) as database:
                 table = _quoted_identifier(source.name)
-                columns = database.execute(
-                    f"PRAGMA table_info({table})"
-                ).fetchall()  # noqa: S608
-                primary = next(
-                    (str(row[1]) for row in columns if int(row[5]) == 1), None
-                )
+                columns = database.execute(f"PRAGMA table_info({table})").fetchall()
+                primary = next((str(row[1]) for row in columns if int(row[5]) == 1), None)
                 if primary is not None:
                     key = _quoted_identifier(primary)
-                    ids = database.execute(
-                        f"SELECT {key} FROM {table} ORDER BY {key}"
-                    ).fetchall()  # noqa: S608
+                    ids = database.execute(f"SELECT {key} FROM {table} ORDER BY {key}").fetchall()  # noqa: S608
                     records = [source.get(int(row[0])) for row in ids]
         geometries: list[BaseGeometry] = []
         for record in records:
@@ -112,7 +106,7 @@ def build_catchments(config: CatchmentConfig) -> Path:
         raise FileNotFoundError(msg)
     if not config.interest.is_file():
         raise FileNotFoundError(config.interest)
-    interest_crs, interests = _fiona_features(config.interest)
+    interest_crs, interests = read_interest_features(config.interest)
     if interest_crs != config.target_crs:
         msg = "Interest CRS must match the requested analysis CRS; reproject explicitly"
         raise ValueError(msg)
@@ -126,8 +120,7 @@ def build_catchments(config: CatchmentConfig) -> Path:
         layers = stack.layers
         if stack.skipped_commands:
             warnings.warn(
-                "TGC terrain commands not applied to the raster mosaic: "
-                + "; ".join(stack.skipped_commands),
+                "TGC terrain commands not applied to the raster mosaic: " + "; ".join(stack.skipped_commands),
                 RuntimeWarning,
                 stacklevel=2,
             )
@@ -162,23 +155,13 @@ def build_catchments(config: CatchmentConfig) -> Path:
                     & (elevation_source.read_masks(1) > 0)
                     & (terrain.read_masks(1) > 0)
                 )
-                directions = (
-                    direction_source.read(1, masked=True).filled(0).astype(np.int16)
-                )
-                elevations = (
-                    elevation_source.read(1, masked=True)
-                    .filled(np.nan)
-                    .astype(np.float64)
-                )
+                directions = direction_source.read(1, masked=True).filled(0).astype(np.int16)
+                elevations = elevation_source.read(1, masked=True).filled(np.nan).astype(np.float64)
                 valid &= np.isfinite(elevations)
                 staged = scratch / config.output.name
                 geometry_types = {geometry.geom_type for geometry in interests}
                 if geometry_types == {"Point"}:
-                    upstream = (
-                        accumulation_source.read(1, masked=True)
-                        .filled(np.nan)
-                        .astype(np.float64)
-                    )
+                    upstream = accumulation_source.read(1, masked=True).filled(np.nan).astype(np.float64)
                     catchments = delineate_outlet_catchments(
                         directions,
                         elevations,
@@ -190,9 +173,7 @@ def build_catchments(config: CatchmentConfig) -> Path:
                         allow_partial=config.allow_partial,
                         clip_bounds=config.analysis_bounds,
                     )
-                    write_outlet_catchment_polygons(
-                        staged, catchments, crs_wkt=config.target_crs.to_wkt()
-                    )
+                    write_outlet_catchment_polygons(staged, catchments, crs_wkt=config.target_crs.to_wkt())
                 elif "Point" in geometry_types:
                     msg = "Interest vector cannot mix point and line/polygon geometries"
                     raise ValueError(msg)
@@ -204,9 +185,7 @@ def build_catchments(config: CatchmentConfig) -> Path:
                         transform=terrain.transform,
                         valid_cells=valid,
                     )
-                    write_catchment_polygons(
-                        staged, inflows, crs_wkt=config.target_crs.to_wkt()
-                    )
+                    write_catchment_polygons(staged, inflows, crs_wkt=config.target_crs.to_wkt())
                 publishing = config.output.with_suffix(config.output.suffix + ".tmp")
                 if publishing.exists():
                     msg = f"Temporary catchment output already exists: {publishing}"

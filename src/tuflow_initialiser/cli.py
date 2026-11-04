@@ -11,14 +11,10 @@ from .workflow import BuildConfig, build
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Initialise standalone 2D ROG TUFLOW models"
-    )
+    parser = argparse.ArgumentParser(description="Initialise standalone 2D ROG TUFLOW models")
     commands = parser.add_subparsers(dest="command", required=True)
 
-    init = commands.add_parser(
-        "init", help="Create empty TUFLOW project from canonical templates"
-    )
+    init = commands.add_parser("init", help="Create empty TUFLOW project from canonical templates")
     init.add_argument("--output", required=True, type=Path)
     init.add_argument("--name", required=True)
     init.add_argument("--scenario", required=True)
@@ -27,9 +23,7 @@ def _parser() -> argparse.ArgumentParser:
     init.add_argument("--ryan-tools-scripts", type=Path, default=None)
     init.add_argument("--overwrite", action="store_true")
 
-    make = commands.add_parser(
-        "build", help="Build project from DEM/AOI via GRASS and canonical TUFLOW GIS"
-    )
+    make = commands.add_parser("build", help="Build project from DEM/AOI via GRASS and canonical TUFLOW GIS")
     make.add_argument(
         "--terrain",
         required=True,
@@ -75,14 +69,10 @@ def _parser() -> argparse.ArgumentParser:
         help="Also generate optional inflow and stream-reach catchment products",
     )
 
-    catchments = commands.add_parser(
-        "catchments", help="Generate catchment polygons only; no TUFLOW project files"
-    )
+    catchments = commands.add_parser("catchments", help="Generate catchment polygons only; no TUFLOW project files")
     terrain_source = catchments.add_mutually_exclusive_group(required=True)
     terrain_source.add_argument("--terrain", type=Path, action="append")
-    terrain_source.add_argument(
-        "--tgc", type=Path, help="TGC parsed by PyTUFLOW for Read Grid Zpts terrain"
-    )
+    terrain_source.add_argument("--tgc", type=Path, help="TGC parsed by PyTUFLOW for Read Grid Zpts terrain")
     catchments.add_argument(
         "--tgc-scenario",
         action="append",
@@ -100,12 +90,8 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="Point, line or polygon vector in the DEM CRS",
     )
-    catchments.add_argument(
-        "--output", required=True, type=Path, help="New catchment GeoPackage"
-    )
-    catchments.add_argument(
-        "--crs", required=True, help="Analysis CRS, for example EPSG:28351"
-    )
+    catchments.add_argument("--output", required=True, type=Path, help="New catchment GeoPackage")
+    catchments.add_argument("--crs", required=True, help="Analysis CRS, for example EPSG:28351")
     catchments.add_argument("--analysis-resolution-m", type=float, default=None)
     catchments.add_argument(
         "--analysis-bounds",
@@ -142,9 +128,7 @@ def main() -> int:
                 scenario_name=args.scenario,
                 prj_file=args.prj,
                 tuflow_executable=args.tuflow_exe,
-                templates_dir=Path(__file__).absolute().parent
-                / "resources"
-                / "tuflow_templates",
+                templates_dir=Path(__file__).absolute().parent / "resources" / "tuflow_templates",
                 copy_utilities=args.ryan_tools_scripts is not None,
                 utility_source_root=args.ryan_tools_scripts,
                 overwrite=args.overwrite,
@@ -183,9 +167,7 @@ def main() -> int:
                 tgc=args.tgc,
                 tgc_scenarios=tuple(args.tgc_scenario),
                 tgc_global_only=args.tgc_global_only,
-                analysis_bounds=(
-                    tuple(args.analysis_bounds) if args.analysis_bounds else None
-                ),
+                analysis_bounds=(tuple(args.analysis_bounds) if args.analysis_bounds else None),
                 analysis_resolution_m=args.analysis_resolution_m,
                 max_analysis_cells=args.max_analysis_cells,
                 grass_executable=args.grass_exe,

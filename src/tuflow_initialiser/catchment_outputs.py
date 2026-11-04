@@ -126,9 +126,7 @@ def write_inflow_products(
         for item in inflows:
             if not item.path or item.length_m is None or item.slope_ea is None:
                 continue
-            geometry = LineString(
-                [pixel_centre(transform, row, col) for row, col in item.path]
-            )
+            geometry = LineString([pixel_centre(transform, row, col) for row, col in item.path])
             if abs(geometry.length - item.length_m) > 1e-6:
                 msg = "GIS LFP length differs from computed D8 length"
                 raise ValueError(msg)
@@ -143,9 +141,7 @@ def write_inflow_products(
                         "slope_ea": item.slope_ea,
                         "source_z_m": item.source_elevation_m,
                         "outlet_z_m": item.outlet_elevation_m,
-                        "signed_slope_qa": (
-                            "negative" if item.slope_ea < 0 else "nonnegative"
-                        ),
+                        "signed_slope_qa": ("negative" if item.slope_ea < 0 else "nonnegative"),
                         "origin": "inferred_D8",
                     },
                 }
@@ -180,9 +176,7 @@ def write_inflow_summary(path: Path, inflows: list[InflowCatchment]) -> None:
     )
 
 
-def write_catchment_polygons(
-    path: Path, inflows: list[InflowCatchment], *, crs_wkt: str
-) -> None:
+def write_catchment_polygons(path: Path, inflows: list[InflowCatchment], *, crs_wkt: str) -> None:
     """Write only the requested per-entry upstream catchment polygons."""
     schema: LayerSchema = {
         "geometry": "MultiPolygon",
@@ -195,9 +189,7 @@ def write_catchment_polygons(
             "z_mean_m": "float",
         },
     }
-    with fiona.open(
-        path, "w", driver="GPKG", layer="catchments", crs_wkt=crs_wkt, schema=schema
-    ) as output:
+    with fiona.open(path, "w", driver="GPKG", layer="catchments", crs_wkt=crs_wkt, schema=schema) as output:
         for item in inflows:
             output.write(
                 {
@@ -214,9 +206,7 @@ def write_catchment_polygons(
             )
 
 
-def write_outlet_catchment_polygons(
-    path: Path, catchments: list[OutletCatchment], *, crs_wkt: str
-) -> None:
+def write_outlet_catchment_polygons(path: Path, catchments: list[OutletCatchment], *, crs_wkt: str) -> None:
     """Write one upstream catchment polygon for each point interest feature."""
     schema: LayerSchema = {
         "geometry": "MultiPolygon",
@@ -232,9 +222,7 @@ def write_outlet_catchment_polygons(
             "status": "str:64",
         },
     }
-    with fiona.open(
-        path, "w", driver="GPKG", layer="catchments", crs_wkt=crs_wkt, schema=schema
-    ) as output:
+    with fiona.open(path, "w", driver="GPKG", layer="catchments", crs_wkt=crs_wkt, schema=schema) as output:
         for item in catchments:
             output.write(
                 {

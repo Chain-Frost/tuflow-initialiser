@@ -66,15 +66,11 @@ def test_two_inflows_to_one_aoi_are_not_combined(tmp_path: Path) -> None:
         assert len(records) == 2
         assert all(feature.properties["origin"] == "inferred_D8" for feature in records)
         for record, column in zip(records, (2, 7), strict=True):
-            expected = LineString(
-                [(column + 0.5, northing) for northing in (8.5, 7.5, 6.5, 5.5, 4.5)]
-            )
+            expected = LineString([(column + 0.5, northing) for northing in (8.5, 7.5, 6.5, 5.5, 4.5)])
             assert feature_geometry(record).equals_exact(expected, 0)
     summary = tmp_path / "summary.json"
     write_inflow_summary(summary, catchments)
-    assert '"cumulative_areas_may_overlap_between_aois": true' in summary.read_text(
-        encoding="utf-8"
-    )
+    assert '"cumulative_areas_may_overlap_between_aois": true' in summary.read_text(encoding="utf-8")
 
 
 def test_maximum_geometric_length_not_tributary_size() -> None:
@@ -84,9 +80,7 @@ def test_maximum_geometric_length_not_tributary_size() -> None:
     directions[7, 3] = 8
     directions[6, 2] = 7
     directions[8, 2] = 1
-    catchments = delineate_inflows(
-        directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1)
-    )
+    catchments = delineate_inflows(directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1))
     assert len(catchments) == 1
     assert catchments[0].path[0] == (3, 5)
     assert catchments[0].path[-1] == (8, 5)
@@ -132,9 +126,7 @@ def test_excluded_entry_is_retained_but_no_incomplete_lfp() -> None:
     assert inflows[0].status == "excluded_from_detailed_analysis"
     assert not inflows[0].path
     assert inflows[0].length_m is None
-    complete = delineate_inflows(
-        directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1)
-    )
+    complete = delineate_inflows(directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1))
     assert complete[0].status == "complete"
     assert complete[0].length_m == pytest.approx(5.0)
 
@@ -143,9 +135,7 @@ def test_longest_path_preserves_signed_negative_slope() -> None:
     directions, elevations = _base()
     directions[3:8, 5] = 6
     elevations[3:9, 5] = np.arange(6.0)
-    result = delineate_inflows(
-        directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1)
-    )
+    result = delineate_inflows(directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1))
     assert result[0].slope_ea == pytest.approx(-1)
 
 
@@ -172,9 +162,7 @@ def test_diagonal_d8_steps_use_true_geometric_length() -> None:
     directions[4, 4] = 7
     # Non-square cells must use separate x/y horizontal distances.
     actual = box(10.2, 15.2, 11.8, 17.8)
-    result = delineate_inflows(
-        directions, elevations, [actual], transform=from_origin(0, 33, 2, 3)
-    )
+    result = delineate_inflows(directions, elevations, [actual], transform=from_origin(0, 33, 2, 3))
     assert len(result) == 1
     assert result[0].path == ((2, 2), (3, 3), (4, 4), (5, 5))
     assert result[0].length_m == pytest.approx(3 * np.hypot(2, 3))
@@ -185,9 +173,7 @@ def test_ties_choose_deterministic_upstream_cell() -> None:
     directions[5, 5] = 6
     directions[4, 4] = 7
     directions[4, 6] = 5
-    result = delineate_inflows(
-        directions, elevations, [_aoi_cell(6, 5)], transform=from_origin(0, 11, 1, 1)
-    )
+    result = delineate_inflows(directions, elevations, [_aoi_cell(6, 5)], transform=from_origin(0, 11, 1, 1))
     assert len(result) == 1
     assert result[0].path == ((4, 4), (5, 5), (6, 5))
     assert result[0].length_m == pytest.approx(1 + np.sqrt(2))

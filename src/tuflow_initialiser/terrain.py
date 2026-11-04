@@ -70,7 +70,7 @@ def compose_terrain(
     )
 
 
-def compose_terrain_layers(
+def compose_terrain_layers(  # noqa: C901 - staged raster composition is intentionally explicit
     terrain_layers: Sequence[TerrainLayer],
     *,
     target_crs: CRS,
@@ -82,10 +82,7 @@ def compose_terrain_layers(
 ) -> TerrainMosaic:
     """Build a high-to-low priority mosaic, including optional clip polygons."""
     layers = tuple(
-        TerrainLayer(
-            item.raster.absolute(), item.clip.absolute() if item.clip else None
-        )
-        for item in terrain_layers
+        TerrainLayer(item.raster.absolute(), item.clip.absolute() if item.clip else None) for item in terrain_layers
     )
     paths = tuple(item.raster for item in layers)
     if not paths or len(paths) != len(set(paths)):
@@ -94,9 +91,7 @@ def compose_terrain_layers(
     if len(paths) > np.iinfo(np.uint16).max:
         msg = "At most 65535 terrain sources are supported"
         raise ValueError(msg)
-    if not target_crs.is_projected or not math.isclose(
-        target_crs.linear_units_factor[1], 1.0
-    ):
+    if not target_crs.is_projected or not math.isclose(target_crs.linear_units_factor[1], 1.0):
         msg = "Target CRS must be projected in metres"
         raise ValueError(msg)
     if max_cells <= 0:
@@ -117,18 +112,11 @@ def compose_terrain_layers(
 
     with ExitStack() as stack:
         sources = [stack.enter_context(rasterio.open(path)) for path in paths]
-        source_bounds = [
-            _validated_bounds(source, target_crs, assume_missing_crs)
-            for source in sources
-        ]
+        source_bounds = [_validated_bounds(source, target_crs, assume_missing_crs) for source in sources]
         if resolution_m is None:
             first = sources[0]
             first_crs = first.crs or assume_missing_crs
-            if (
-                first_crs is None
-                or first_crs != target_crs
-                or not first_crs.is_projected
-            ):
+            if first_crs is None or first_crs != target_crs or not first_crs.is_projected:
                 msg = "Specify --analysis-resolution-m if top-priority DEM requires reprojection"
                 raise ValueError(msg)
             resolution_m = max(abs(first.res[0]), abs(first.res[1]))
@@ -173,10 +161,7 @@ def compose_terrain_layers(
             )
             for src in sources
         ]
-        clips = [
-            _clip_geometries(layer.clip, target_crs) if layer.clip is not None else None
-            for layer in layers
-        ]
+        clips = [_clip_geometries(layer.clip, target_crs) if layer.clip is not None else None for layer in layers]
         profile: RasterProfile = {
             "driver": "GTiff",
             "dtype": "float32",
@@ -196,15 +181,11 @@ def compose_terrain_layers(
         ):
             for row in range(0, height, 512):
                 for col in range(0, width, 512):
-                    window = Window(
-                        col, row, min(512, width - col), min(512, height - row)
-                    )
+                    window = Window(col, row, min(512, width - col), min(512, height - row))
                     tile_shape = (int(window.height), int(window.width))
                     values = np.full(tile_shape, profile["nodata"], dtype=np.float32)
                     selected = np.zeros(tile_shape, dtype=np.uint16)
-                    for rank, (vrt, clip_geometries) in enumerate(
-                        zip(vrts, clips, strict=True), start=1
-                    ):
+                    for rank, (vrt, clip_geometries) in enumerate(zip(vrts, clips, strict=True), start=1):
                         pixels = vrt.read(1, window=window)
                         # WarpedVRT(add_alpha=True) exposes source coverage in its
                         # final alpha band; read_masks(1) can report all-valid.
@@ -237,7 +218,7 @@ def _clip_geometries(path: Path, target_crs: CRS) -> list[dict[str, object]]:
         for feature in source:
             if feature.geometry is None:
                 continue
-            geometry = dict(feature.geometry)
+            geometry = feature.geometry.__geo_interface__
             if source_crs != target_crs:
                 geometry = transform_geom(source_crs, target_crs, geometry)
             if geometry.get("type") not in {"Polygon", "MultiPolygon"}:

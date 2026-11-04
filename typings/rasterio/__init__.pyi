@@ -9,7 +9,9 @@ from .crs import CRS
 from .io import DatasetReader, DatasetWriter
 
 @overload
-def open(fp: str | PathLike[str], mode: Literal["r"] = ..., **kwargs: object) -> DatasetReader: ...  # noqa: A001 - third-party public API name
+def open(
+    fp: str | PathLike[str], mode: Literal["r"] = ..., **kwargs: object
+) -> DatasetReader: ...  # noqa: A001 - third-party public API name
 @overload
 def open(  # noqa: A001 - third-party public API name
     fp: str | PathLike[str],

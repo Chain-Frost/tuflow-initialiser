@@ -7,7 +7,7 @@ import fiona
 from rasterio.crs import CRS
 from shapely.geometry import LineString, Point, mapping
 
-from tuflow_initialiser.catchment_workflow import _fiona_features
+from tuflow_initialiser.catchment_workflow import read_interest_features
 
 
 def test_line_interest_with_stale_geopackage_count_is_read(tmp_path: Path) -> None:
@@ -21,16 +21,12 @@ def test_line_interest_with_stale_geopackage_count_is_read(tmp_path: Path) -> No
         schema=schema,
         crs_wkt=CRS.from_epsg(28351).to_wkt(),
     ) as output:
-        output.write(
-            {"geometry": mapping(LineString([(0, 0), (10, 10)])), "properties": {}}
-        )
+        output.write({"geometry": mapping(LineString([(0, 0), (10, 10)])), "properties": {}})
     with sqlite3.connect(path) as database:
-        database.execute(
-            "UPDATE gpkg_ogr_contents SET feature_count = 0 WHERE table_name = 'road'"
-        )
+        database.execute("UPDATE gpkg_ogr_contents SET feature_count = 0 WHERE table_name = 'road'")
         database.commit()
 
-    crs, geometries = _fiona_features(path)
+    crs, geometries = read_interest_features(path)
 
     assert crs == CRS.from_epsg(28351)
     assert len(geometries) == 1
@@ -49,7 +45,7 @@ def test_point_interest_is_supported(tmp_path: Path) -> None:
     ) as output:
         output.write({"geometry": mapping(Point(5, 6)), "properties": {}})
 
-    crs, geometries = _fiona_features(path)
+    crs, geometries = read_interest_features(path)
 
     assert crs == CRS.from_epsg(28350)
     assert geometries == [Point(5, 6)]
