@@ -1,3 +1,5 @@
+from affine import Affine
+
 class Window:
     col_off: float
     row_off: float

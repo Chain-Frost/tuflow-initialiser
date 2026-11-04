@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 from shapely.geometry.base import BaseGeometry
 
 def rasterize(
-    shapes: Iterable[tuple[BaseGeometry, int]],
+    shapes: Iterable[tuple[BaseGeometry | dict[str, object], int]],
     *,
     out_shape: tuple[int, int],
     transform: Affine,

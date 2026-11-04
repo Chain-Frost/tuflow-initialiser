@@ -1,7 +1,9 @@
 """Extract an ordered terrain stack from a TUFLOW geometry control file."""
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol, cast
 
 from pytuflow import TGC
 
@@ -17,9 +19,33 @@ class TgcTerrainStack:
     skipped_commands: tuple[str, ...]
 
 
+class _TgcInput(Protocol):
+    """Typed surface used from PyTUFLOW control-file inputs."""
+
+    lhs: object
+    scope: object
+    files: object
+
+    def __str__(self) -> str: ...
+
+
+class _Tgc(Protocol):
+    """Typed surface used from a parsed PyTUFLOW TGC."""
+
+    inputs: object
+
+
+class _ScenarioScope(Protocol):
+    """Typed surface used from a PyTUFLOW scenario scope."""
+
+    names: object
+
+    def is_neg(self) -> bool: ...
+
+
 def _active(scope_list: object, scenarios: tuple[str, ...], *, global_only: bool) -> bool:
     """Return whether a PyTUFLOW scope is active for the requested scenarios."""
-    scopes = tuple(scope_list)  # type: ignore[arg-type]
+    scopes = tuple(cast(Iterable[object], scope_list))
     if all(type(scope).__name__ == "GlobalScope" for scope in scopes):
         return True
     if global_only:
@@ -29,9 +55,10 @@ def _active(scope_list: object, scenarios: tuple[str, ...], *, global_only: bool
             continue
         if type(scope).__name__ != "ScenarioScope":
             return False
-        names = {str(name).casefold() for name in getattr(scope, "names", ())}
+        scenario_scope = cast(_ScenarioScope, scope)
+        names = {str(name).casefold() for name in cast(Iterable[object], scenario_scope.names)}
         matched = any(scenario.casefold() in names for scenario in scenarios)
-        if bool(scope.is_neg()):
+        if scenario_scope.is_neg():
             matched = not matched
         if not matched:
             return False
@@ -57,11 +84,12 @@ def read_tgc_terrain_stack(
         msg = "Supply at least one scenario or select global-only TGC terrain"
         raise ValueError(msg)
 
-    tgc = TGC(path)
+    tgc = cast(_Tgc, TGC(path))
     low_to_high: list[TerrainLayer] = []
     commands: list[str] = []
     skipped: list[str] = []
-    for item in tgc.inputs:
+    inputs = cast(tuple[_TgcInput, ...], tuple(tgc.inputs))
+    for item in inputs:
         lhs = str(getattr(item, "lhs", "")).strip().lower()
         if lhs not in {"read grid zpts", "read gis zpts"}:
             continue
@@ -71,7 +99,7 @@ def read_tgc_terrain_stack(
         if lhs == "read gis zpts":
             skipped.append(command)
             continue
-        files = [Path(str(value)).absolute() for value in item.files]
+        files = [Path(str(value)).absolute() for value in cast(tuple[object, ...], tuple(item.files))]
         if not files:
             skipped.append(command)
             continue
