@@ -104,6 +104,9 @@ def build_catchments(config: CatchmentConfig) -> Path:
     if config.terrains and any(not path.is_file() for path in config.terrains):
         msg = "Every terrain raster must exist"
         raise FileNotFoundError(msg)
+    if config.terrains and len(config.terrains) != len({path.absolute() for path in config.terrains}):
+        msg = "Explicit terrain rasters must be unique, in priority order"
+        raise ValueError(msg)
     if not config.interest.is_file():
         raise FileNotFoundError(config.interest)
     interest_crs, interests = read_interest_features(config.interest)

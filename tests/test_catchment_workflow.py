@@ -4,10 +4,11 @@ import sqlite3
 from pathlib import Path
 
 import fiona
+import pytest
 from rasterio.crs import CRS
 from shapely.geometry import LineString, Point, mapping
 
-from tuflow_initialiser.catchment_workflow import read_interest_features
+from tuflow_initialiser.catchment_workflow import CatchmentConfig, build_catchments, read_interest_features
 
 
 def test_line_interest_with_stale_geopackage_count_is_read(tmp_path: Path) -> None:
@@ -49,3 +50,15 @@ def test_point_interest_is_supported(tmp_path: Path) -> None:
 
     assert crs == CRS.from_epsg(28350)
     assert geometries == [Point(5, 6)]
+
+def test_catchments_explicit_duplicate_rasters_rejected(tmp_path: Path) -> None:
+    raster = tmp_path / "source.tif"
+    raster.touch()
+    config = CatchmentConfig(
+        terrains=(raster, raster),
+        interest=tmp_path / "unused.gpkg",
+        output=tmp_path / "catchments.gpkg",
+        target_crs=CRS.from_epsg(28350),
+    )
+    with pytest.raises(ValueError, match="unique"):
+        build_catchments(config)
