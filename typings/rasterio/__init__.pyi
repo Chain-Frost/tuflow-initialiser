@@ -5,6 +5,7 @@ from affine import Affine as Affine
 
 from . import crs as crs
 from . import io as io
+from . import windows as windows
 from .crs import CRS
 from .io import DatasetReader, DatasetWriter
 

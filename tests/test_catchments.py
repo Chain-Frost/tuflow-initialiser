@@ -8,11 +8,14 @@ import pytest
 from numpy.typing import NDArray
 from rasterio.crs import CRS
 from rasterio.transform import from_origin
-from shapely.geometry import LineString, box
+from shapely.geometry import LineString, Point, box
 from shapely.geometry.base import BaseGeometry
 
-from tuflow_initialiser.catchment_outputs import write_inflow_products, write_inflow_summary
-from tuflow_initialiser.catchments import delineate_inflows
+from tuflow_initialiser.catchment_outputs import (
+    write_inflow_products,
+    write_inflow_summary,
+)
+from tuflow_initialiser.catchments import delineate_inflows, delineate_outlet_catchments
 from tuflow_initialiser.gis_writer import feature_geometry
 
 
@@ -47,9 +50,17 @@ def test_two_inflows_to_one_aoi_are_not_combined(tmp_path: Path) -> None:
     assert all(item.slope_ea == pytest.approx(1) for item in catchments)
     gpkg = tmp_path / "catchments.gpkg"
     write_inflow_products(
-        gpkg, aois=[aoi], inflows=catchments, transform=transform, crs_wkt=CRS.from_epsg(28350).to_wkt()
+        gpkg,
+        aois=[aoi],
+        inflows=catchments,
+        transform=transform,
+        crs_wkt=CRS.from_epsg(28350).to_wkt(),
     )
-    assert set(fiona.listlayers(gpkg)) == {"aoi_inputs", "aoi_inflow_catchments", "longest_flow_paths"}
+    assert set(fiona.listlayers(gpkg)) == {
+        "aoi_inputs",
+        "aoi_inflow_catchments",
+        "longest_flow_paths",
+    }
     with fiona.open(gpkg, layer="longest_flow_paths") as lines:
         records = list(lines)
         assert len(records) == 2
@@ -83,7 +94,12 @@ def test_distinct_aois_and_nested_cumulative_areas() -> None:
     directions[2:9, 4] = 6
     upstream = _aoi_cell(5, 4)
     downstream = _aoi_cell(9, 4)
-    catchments = delineate_inflows(directions, elevations, [upstream, downstream], transform=from_origin(0, 11, 1, 1))
+    catchments = delineate_inflows(
+        directions,
+        elevations,
+        [upstream, downstream],
+        transform=from_origin(0, 11, 1, 1),
+    )
     assert len(catchments) == 2
     assert catchments[0].aoi_id == 1
     assert catchments[1].aoi_id == 2
@@ -99,7 +115,11 @@ def test_excluded_entry_is_retained_but_no_incomplete_lfp() -> None:
     selected = np.ones_like(directions, dtype=bool)
     selected[5, 5] = False
     inflows = delineate_inflows(
-        directions, elevations, [_aoi_cell(8, 5)], transform=from_origin(0, 11, 1, 1), analyse_cells=selected
+        directions,
+        elevations,
+        [_aoi_cell(8, 5)],
+        transform=from_origin(0, 11, 1, 1),
+        analyse_cells=selected,
     )
     assert len(inflows) == 1
     assert inflows[0].local_area_m2 == pytest.approx(5.0)
@@ -124,7 +144,10 @@ def test_multiple_disconnected_aois_keep_separate_ids() -> None:
     directions[3:7, 2] = 6
     directions[2:7, 8] = 6
     result = delineate_inflows(
-        directions, elevations, [_aoi_cell(7, 2), _aoi_cell(7, 8)], transform=from_origin(0, 11, 1, 1)
+        directions,
+        elevations,
+        [_aoi_cell(7, 2), _aoi_cell(7, 8)],
+        transform=from_origin(0, 11, 1, 1),
     )
     assert len(result) == 2
     assert [x.aoi_id for x in result] == [1, 2]
@@ -154,3 +177,72 @@ def test_ties_choose_deterministic_upstream_cell() -> None:
     assert len(result) == 1
     assert result[0].path == ((4, 4), (5, 5), (6, 5))
     assert result[0].length_m == pytest.approx(1 + np.sqrt(2))
+
+
+def test_point_outlet_produces_one_complete_upstream_polygon() -> None:
+    directions, elevations = _base()
+    directions[2:8, 5] = 6
+    accumulation = np.zeros_like(elevations)
+    accumulation[2:9, 5] = np.arange(1, 8)
+    valid = np.ones_like(directions, dtype=bool)
+
+    result = delineate_outlet_catchments(
+        directions,
+        elevations,
+        accumulation,
+        [Point(5.5, 2.5)],
+        transform=from_origin(0, 11, 1, 1),
+        valid_cells=valid,
+    )
+
+    assert len(result) == 1
+    assert result[0].outlet == (8, 5)
+    assert result[0].area_m2 == pytest.approx(7)
+    assert result[0].status == "complete"
+
+
+def test_point_outlet_partial_status_and_accumulation_snap() -> None:
+    directions, elevations = _base()
+    directions[:8, 5] = 6
+    accumulation = np.zeros_like(elevations)
+    accumulation[8, 5] = 100
+    valid = np.ones_like(directions, dtype=bool)
+    valid[4, 4] = False
+
+    result = delineate_outlet_catchments(
+        directions,
+        elevations,
+        accumulation,
+        [Point(4.6, 2.6)],
+        transform=from_origin(0, 11, 1, 1),
+        valid_cells=valid,
+        snap_distance_m=2,
+        allow_partial=True,
+    )
+
+    assert result[0].outlet == (8, 5)
+    assert "analysis_edge" in result[0].status
+    assert "nodata_edge" in result[0].status
+
+
+def test_point_outlet_geometry_is_clipped_to_literal_bounds() -> None:
+    directions, elevations = _base()
+    directions[:8, 5] = 6
+    accumulation = np.zeros_like(elevations)
+    valid = np.ones_like(directions, dtype=bool)
+
+    result = delineate_outlet_catchments(
+        directions,
+        elevations,
+        accumulation,
+        [Point(5.5, 2.5)],
+        transform=from_origin(0, 11, 1, 1),
+        valid_cells=valid,
+        allow_partial=True,
+        clip_bounds=(0.25, 0.25, 10.75, 10.75),
+    )
+
+    assert box(0.25, 0.25, 10.75, 10.75).covers(result[0].polygon)
+    assert result[0].polygon.bounds[1] == pytest.approx(2)
+    assert result[0].polygon.bounds[3] == pytest.approx(10.75)
+    assert result[0].area_m2 == pytest.approx(result[0].polygon.area)

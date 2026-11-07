@@ -9,7 +9,7 @@ description = "Standalone 2D rainfall-on-grid TUFLOW project initialiser"
 requires-python = ">=3.14"
 readme = "README.md"
 license = "LicenseRef-SUL-1.0"
-dependencies = ["numpy", "rasterio", "fiona", "shapely>=2", "loguru"]
+dependencies = ["numpy", "rasterio", "fiona", "shapely>=2", "loguru", "pytuflow>=1.2,<2"]
 
 [project.optional-dependencies]
 dev = ["pytest>=9", "ruff==0.16.6", "pyright>=1.1.410", "types-shapely==2.1.0.20260728"]

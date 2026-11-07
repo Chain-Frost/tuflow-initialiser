@@ -15,11 +15,13 @@ import numpy as np
 import rasterio
 from numpy.typing import NDArray
 from rasterio.features import rasterize, shapes
-from shapely.geometry import shape
+from rasterio.transform import rowcol
+from rasterio.windows import Window
+from shapely.geometry import Point, box, shape
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
-from .d8 import contributing_cells, next_cell
+from .d8 import OFFSETS, contributing_cells, next_cell
 from .profiles import equal_area_slope
 
 type Cell = tuple[int, int]
@@ -47,8 +49,154 @@ class InflowCatchment:
     status: str
 
 
+@dataclass(frozen=True, slots=True)
+class OutletCatchment:
+    """One complete or deliberately clipped catchment draining to a point."""
+
+    interest_id: int
+    outlet: Cell
+    polygon: BaseGeometry
+    area_m2: float
+    min_elevation_m: float
+    max_elevation_m: float
+    mean_elevation_m: float
+    status: str
+    snap_distance_m: float
+
+
+def _snapped_cell(
+    point: Point,
+    valid_cells: NDArray[np.bool_],
+    accumulation: NDArray[np.floating],
+    *,
+    transform: rasterio.Affine,
+    snap_distance_m: float,
+) -> tuple[Cell, float]:
+    row_value, col_value = rowcol(transform, point.x, point.y)
+    row, col = int(row_value), int(col_value)
+    height, width = valid_cells.shape
+    if not (0 <= row < height and 0 <= col < width):
+        msg = "Interest point falls outside the analysis bounds"
+        raise ValueError(msg)
+    radius = math.ceil(snap_distance_m / min(abs(transform.a), abs(transform.e)))
+    candidates: list[tuple[float, float, int, int]] = []
+    for candidate_row in range(max(0, row - radius), min(height, row + radius + 1)):
+        for candidate_col in range(max(0, col - radius), min(width, col + radius + 1)):
+            if not valid_cells[candidate_row, candidate_col]:
+                continue
+            x = transform.c + (candidate_col + 0.5) * transform.a
+            y = transform.f + (candidate_row + 0.5) * transform.e
+            distance = math.hypot(x - point.x, y - point.y)
+            if distance <= snap_distance_m or (radius == 0 and candidate_row == row and candidate_col == col):
+                score = abs(float(accumulation[candidate_row, candidate_col]))
+                if math.isfinite(score):
+                    candidates.append((-score, distance, candidate_row, candidate_col))
+    if not candidates:
+        msg = f"No valid D8 cell within {snap_distance_m:g} m of interest point"
+        raise ValueError(msg)
+    _, distance, snapped_row, snapped_col = min(candidates)
+    return (snapped_row, snapped_col), distance
+
+
+def _partial_status(cells: NDArray[np.bool_], valid_cells: NDArray[np.bool_]) -> str:
+    reasons: list[str] = []
+    if bool(np.any(cells[0, :]) or np.any(cells[-1, :]) or np.any(cells[:, 0]) or np.any(cells[:, -1])):
+        reasons.append("analysis_edge")
+    height, width = cells.shape
+    for dr, dc in OFFSETS.values():
+        rows = slice(max(0, -dr), min(height, height - dr))
+        cols = slice(max(0, -dc), min(width, width - dc))
+        neighbour_rows = slice(max(0, dr), min(height, height + dr))
+        neighbour_cols = slice(max(0, dc), min(width, width + dc))
+        if np.any(cells[rows, cols] & ~valid_cells[neighbour_rows, neighbour_cols]):
+            reasons.append("nodata_edge")
+            break
+    return "complete" if not reasons else "partial_" + "_and_".join(reasons)
+
+
+def delineate_outlet_catchments(
+    directions: NDArray[np.integer],
+    elevations: NDArray[np.floating],
+    accumulation: NDArray[np.floating],
+    outlets: list[BaseGeometry],
+    *,
+    transform: rasterio.Affine,
+    valid_cells: NDArray[np.bool_],
+    snap_distance_m: float = 0,
+    allow_partial: bool = False,
+    clip_bounds: tuple[float, float, float, float] | None = None,
+) -> list[OutletCatchment]:
+    """Delineate one upstream D8 catchment for each point interest feature."""
+    if directions.shape != elevations.shape or directions.shape != accumulation.shape:
+        msg = "D8, elevation and accumulation grids must match"
+        raise ValueError(msg)
+    if valid_cells.shape != directions.shape:
+        msg = "Validity mask must match D8 grid"
+        raise ValueError(msg)
+    if snap_distance_m < 0:
+        msg = "Outlet snap distance cannot be negative"
+        raise ValueError(msg)
+    result: list[OutletCatchment] = []
+    cell_area = abs(transform.a * transform.e)
+    for interest_id, geometry in enumerate(outlets, start=1):
+        if not isinstance(geometry, Point):
+            msg = "Outlet catchments require point interest geometries"
+            raise TypeError(msg)
+        outlet, snapped_distance = _snapped_cell(
+            geometry,
+            valid_cells,
+            accumulation,
+            transform=transform,
+            snap_distance_m=snap_distance_m,
+        )
+        seed = np.zeros(directions.shape, dtype=bool)
+        seed[outlet] = True
+        cells = contributing_cells(
+            directions,
+            seed,
+            allow_unknown_boundary=allow_partial,
+            require_complete=not allow_partial,
+            valid_cells=valid_cells,
+        )
+        rows, cols = np.nonzero(cells)
+        row_min, row_max = int(rows.min()), int(rows.max()) + 1
+        col_min, col_max = int(cols.min()), int(cols.max()) + 1
+        subset = cells[row_min:row_max, col_min:col_max]
+        subset_transform = rasterio.windows.transform(
+            Window(col_min, row_min, col_max - col_min, row_max - row_min), transform
+        )
+        parts = [
+            shape(geometry)
+            for geometry, value in shapes(subset.astype(np.uint8), mask=subset, transform=subset_transform)
+            if value
+        ]
+        polygon = unary_union(parts)
+        if clip_bounds is not None:
+            polygon = polygon.intersection(box(*clip_bounds))
+        if polygon.is_empty or not polygon.is_valid:
+            msg = "Invalid point-outlet catchment polygon"
+            raise ValueError(msg)
+        values = np.asarray(elevations[cells & valid_cells], dtype=np.float64)
+        result.append(
+            OutletCatchment(
+                interest_id=interest_id,
+                outlet=outlet,
+                polygon=polygon,
+                area_m2=(float(polygon.area) if clip_bounds is not None else int(np.count_nonzero(cells)) * cell_area),
+                min_elevation_m=float(np.min(values)),
+                max_elevation_m=float(np.max(values)),
+                mean_elevation_m=float(np.mean(values)),
+                status=_partial_status(cells, valid_cells),
+                snap_distance_m=snapped_distance,
+            )
+        )
+    return result
+
+
 def _partition(
-    directions: NDArray[np.integer], seeds: NDArray[np.bool_], contributing: NDArray[np.bool_]
+    directions: NDArray[np.integer],
+    seeds: NDArray[np.bool_],
+    contributing: NDArray[np.bool_],
 ) -> tuple[NDArray[np.int32], list[tuple[Cell, Cell]]]:
     """Assign each upstream exterior cell to its first D8 entry into an AOI."""
     crossings: list[tuple[Cell, Cell]] = []
@@ -94,7 +242,9 @@ def _partition(
 
 
 def _farthest_routes(
-    directions: NDArray[np.integer], owner: NDArray[np.int32], transform: rasterio.Affine
+    directions: NDArray[np.integer],
+    owner: NDArray[np.int32],
+    transform: rasterio.Affine,
 ) -> tuple[NDArray[np.int32], NDArray[np.float64]]:
     """Topological longest-distance DP, not maximum contributing accumulation."""
     indegree = np.zeros(directions.shape, dtype=np.uint8)
@@ -204,7 +354,12 @@ def delineate_inflows(
     area = abs(transform.a * transform.e)
     result: list[InflowCatchment] = []
     for aoi_id, aoi in enumerate(aois, start=1):
-        seed = rasterize([(aoi, 1)], out_shape=directions.shape, transform=transform, all_touched=True).astype(bool)
+        seed = rasterize(
+            [(aoi, 1)],
+            out_shape=directions.shape,
+            transform=transform,
+            all_touched=True,
+        ).astype(bool)
         cumulative = contributing_cells(directions, seed, valid_cells=valid_cells)
         owner, crossings = _partition(directions, seed, cumulative)
         if not crossings:

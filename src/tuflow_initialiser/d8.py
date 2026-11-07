@@ -38,7 +38,9 @@ def _check(directions: NDArray[np.integer], seeds: NDArray[np.bool_]) -> None:
 
 
 def _check_valid_cells(
-    directions: NDArray[np.integer], aoi: NDArray[np.bool_], valid_cells: NDArray[np.bool_] | None
+    directions: NDArray[np.integer],
+    aoi: NDArray[np.bool_],
+    valid_cells: NDArray[np.bool_] | None,
 ) -> None:
     """Distinguish unknown D8 data from genuine flow sinks."""
     if valid_cells is None:
@@ -91,6 +93,7 @@ def contributing_cells(
     directions: NDArray[np.integer],
     aoi: NDArray[np.bool_],
     *,
+    allow_unknown_boundary: bool = False,
     require_complete: bool = True,
     valid_cells: NDArray[np.bool_] | None = None,
 ) -> NDArray[np.bool_]:
@@ -110,7 +113,8 @@ def contributing_cells(
                 visited[ur, uc] = True
                 queue.append((ur, uc))
 
-    _check_unknown_upstream_boundary(visited, valid_cells)
+    if not allow_unknown_boundary:
+        _check_unknown_upstream_boundary(visited, valid_cells)
 
     # A directed cycle cannot represent terrain that drains to the AOI.
     # Detect any such cycle within the complete selected drainage subgraph.

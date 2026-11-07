@@ -8,7 +8,7 @@ import rasterio
 from shapely.geometry import LineString, MultiPolygon, Polygon, mapping
 from shapely.geometry.base import BaseGeometry
 
-from .catchments import InflowCatchment
+from .catchments import InflowCatchment, OutletCatchment
 from .coordinates import pixel_centre
 from .gis_types import LayerSchema
 
@@ -39,9 +39,21 @@ def write_inflow_products(
         "geometry": "MultiPolygon",
         "properties": {"aoi_id": "int"},
     }
-    with fiona.open(path, "w", driver="GPKG", layer="aoi_inputs", crs_wkt=crs_wkt, schema=aois_schema) as output:
+    with fiona.open(
+        path,
+        "w",
+        driver="GPKG",
+        layer="aoi_inputs",
+        crs_wkt=crs_wkt,
+        schema=aois_schema,
+    ) as output:
         for aoi_id, geom in enumerate(aois, start=1):
-            output.write({"geometry": mapping(_multipolygon(geom)), "properties": {"aoi_id": aoi_id}})
+            output.write(
+                {
+                    "geometry": mapping(_multipolygon(geom)),
+                    "properties": {"aoi_id": aoi_id},
+                }
+            )
 
     areas_schema: LayerSchema = {
         "geometry": "MultiPolygon",
@@ -61,7 +73,12 @@ def write_inflow_products(
         },
     }
     with fiona.open(
-        path, "w", driver="GPKG", layer="aoi_inflow_catchments", crs_wkt=crs_wkt, schema=areas_schema
+        path,
+        "w",
+        driver="GPKG",
+        layer="aoi_inflow_catchments",
+        crs_wkt=crs_wkt,
+        schema=areas_schema,
     ) as output:
         for item in inflows:
             output.write(
@@ -99,7 +116,12 @@ def write_inflow_products(
         },
     }
     with fiona.open(
-        path, "w", driver="GPKG", layer="longest_flow_paths", crs_wkt=crs_wkt, schema=lines_schema
+        path,
+        "w",
+        driver="GPKG",
+        layer="longest_flow_paths",
+        crs_wkt=crs_wkt,
+        schema=lines_schema,
     ) as output:
         for item in inflows:
             if not item.path or item.length_m is None or item.slope_ea is None:
@@ -119,7 +141,7 @@ def write_inflow_products(
                         "slope_ea": item.slope_ea,
                         "source_z_m": item.source_elevation_m,
                         "outlet_z_m": item.outlet_elevation_m,
-                        "signed_slope_qa": "negative" if item.slope_ea < 0 else "nonnegative",
+                        "signed_slope_qa": ("negative" if item.slope_ea < 0 else "nonnegative"),
                         "origin": "inferred_D8",
                     },
                 }
@@ -179,6 +201,42 @@ def write_catchment_polygons(path: Path, inflows: list[InflowCatchment], *, crs_
                         "z_min_m": item.min_elevation_m,
                         "z_max_m": item.max_elevation_m,
                         "z_mean_m": item.mean_elevation_m,
+                    },
+                }
+            )
+
+
+def write_outlet_catchment_polygons(path: Path, catchments: list[OutletCatchment], *, crs_wkt: str) -> None:
+    """Write one upstream catchment polygon for each point interest feature."""
+    schema: LayerSchema = {
+        "geometry": "MultiPolygon",
+        "properties": {
+            "interest_id": "int",
+            "area_m2": "float",
+            "outlet_row": "int",
+            "outlet_col": "int",
+            "snap_m": "float",
+            "z_min_m": "float",
+            "z_max_m": "float",
+            "z_mean_m": "float",
+            "status": "str:64",
+        },
+    }
+    with fiona.open(path, "w", driver="GPKG", layer="catchments", crs_wkt=crs_wkt, schema=schema) as output:
+        for item in catchments:
+            output.write(
+                {
+                    "geometry": mapping(_multipolygon(item.polygon)),
+                    "properties": {
+                        "interest_id": item.interest_id,
+                        "area_m2": item.area_m2,
+                        "outlet_row": item.outlet[0],
+                        "outlet_col": item.outlet[1],
+                        "snap_m": item.snap_distance_m,
+                        "z_min_m": item.min_elevation_m,
+                        "z_max_m": item.max_elevation_m,
+                        "z_mean_m": item.mean_elevation_m,
+                        "status": item.status,
                     },
                 }
             )
