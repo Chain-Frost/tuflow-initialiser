@@ -4,12 +4,13 @@ from pathlib import Path
 
 import fiona
 import numpy as np
+import pytest
 import rasterio
 from rasterio.crs import CRS
 from rasterio.transform import from_origin
 from shapely.geometry import box, mapping
 
-from tuflow_initialiser.terrain import TerrainLayer, compose_terrain_layers
+from tuflow_initialiser.terrain import TerrainLayer, compose_terrain, compose_terrain_layers
 from tuflow_initialiser.tgc_terrain import read_tgc_terrain_stack
 
 
@@ -29,7 +30,7 @@ def _raster(path: Path, value: float) -> None:
         output.write(np.full((10, 10), value, dtype=np.float32), 1)
 
 
-def _clip(path: Path) -> None:
+def _clip(path: Path, bounds: tuple[float, float, float, float] = (4, 4, 6, 6)) -> None:
     with fiona.open(
         path,
         "w",
@@ -38,7 +39,7 @@ def _clip(path: Path) -> None:
         crs_wkt=CRS.from_epsg(28350).to_wkt(),
         schema={"geometry": "Polygon", "properties": {}},
     ) as output:
-        output.write({"geometry": mapping(box(4, 4, 6, 6)), "properties": {}})
+        output.write({"geometry": mapping(box(*bounds)), "properties": {}})
 
 
 def test_tgc_global_stack_reverses_tuflow_precedence(tmp_path: Path) -> None:
@@ -96,3 +97,55 @@ def test_clipped_layer_and_explicit_bounds(tmp_path: Path) -> None:
     assert np.count_nonzero(values == 2) == 4
     assert np.count_nonzero(ranks == 1) == 4
     assert np.all(values[ranks == 2] == 1)
+
+def test_tgc_repeated_raster_with_different_polygon_clips(tmp_path: Path) -> None:
+    low, patch = tmp_path / "low.tif", tmp_path / "patch.tif"
+    west, east = tmp_path / "west.gpkg", tmp_path / "east.gpkg"
+    _raster(low, 1)
+    _raster(patch, 2)
+    _clip(west, (1, 1, 7, 7))
+    _clip(east, (5, 3, 9, 9))
+    tgc = tmp_path / "repeat.tgc"
+    tgc.write_text(
+        "\n".join(
+            (
+                f"Read Grid Zpts == {low}",
+                f"Read Grid Zpts == {patch} | {west}",
+                f"Read Grid Zpts == {patch} | {east}",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    stack = read_tgc_terrain_stack(tgc, global_only=True)
+    assert stack.layers == (
+        TerrainLayer(patch, east),
+        TerrainLayer(patch, west),
+        TerrainLayer(low),
+    )
+
+    mosaic = compose_terrain_layers(
+        stack.layers,
+        target_crs=CRS.from_epsg(28350),
+        directory=tmp_path / "repeat_mosaic",
+        resolution_m=1,
+    )
+    with rasterio.open(mosaic.dem) as source, rasterio.open(mosaic.source_index) as index:
+        values = source.read(1)
+        ranks = index.read(1)
+
+    # The most recent TGC command wins where the west/east clips overlap.
+    assert (values[4, 5], ranks[4, 5]) == (2, 1)
+    assert (values[7, 2], ranks[7, 2]) == (2, 2)
+    assert (values[9, 0], ranks[9, 0]) == (1, 3)
+
+
+def test_explicit_raster_inputs_still_reject_duplicate_paths(tmp_path: Path) -> None:
+    raster = tmp_path / "terrain.tif"
+    _raster(raster, 1)
+    with pytest.raises(ValueError, match="unique"):
+        compose_terrain(
+            [raster, raster],
+            target_crs=CRS.from_epsg(28350),
+            directory=tmp_path / "explicit",
+        )

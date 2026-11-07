@@ -59,6 +59,10 @@ def compose_terrain(
     alpha band is critical for sources with no declared NoData value.
     """
     layers = tuple(TerrainLayer(Path(item).absolute()) for item in terrain_sources)
+    paths = tuple(item.raster for item in layers)
+    if not paths or len(paths) != len(set(paths)):
+        msg = "Terrain sources must be nonempty and unique, in priority order"
+        raise ValueError(msg)
     return compose_terrain_layers(
         layers,
         target_crs=target_crs,
@@ -85,9 +89,11 @@ def compose_terrain_layers(  # noqa: C901 - staged raster composition is intenti
         TerrainLayer(item.raster.absolute(), item.clip.absolute() if item.clip else None) for item in terrain_layers
     )
     paths = tuple(item.raster for item in layers)
-    if not paths or len(paths) != len(set(paths)):
-        msg = "Terrain sources must be nonempty and unique, in priority order"
+    if not paths:
+        msg = "At least one terrain layer is required"
         raise ValueError(msg)
+    # TGC commands may reuse a raster with distinct clips; each occurrence
+    # remains a separate priority layer and source-index value.
     if len(paths) > np.iinfo(np.uint16).max:
         msg = "At most 65535 terrain sources are supported"
         raise ValueError(msg)
