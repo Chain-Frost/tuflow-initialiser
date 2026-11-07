@@ -98,6 +98,7 @@ def test_clipped_layer_and_explicit_bounds(tmp_path: Path) -> None:
     assert np.count_nonzero(ranks == 1) == 4
     assert np.all(values[ranks == 2] == 1)
 
+
 def test_tgc_repeated_raster_with_different_polygon_clips(tmp_path: Path) -> None:
     low, patch = tmp_path / "low.tif", tmp_path / "patch.tif"
     west, east = tmp_path / "west.gpkg", tmp_path / "east.gpkg"

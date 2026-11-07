@@ -51,6 +51,7 @@ def test_point_interest_is_supported(tmp_path: Path) -> None:
     assert crs == CRS.from_epsg(28350)
     assert geometries == [Point(5, 6)]
 
+
 def test_catchments_explicit_duplicate_rasters_rejected(tmp_path: Path) -> None:
     raster = tmp_path / "source.tif"
     raster.touch()
